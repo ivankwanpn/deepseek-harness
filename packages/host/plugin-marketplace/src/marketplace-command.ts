@@ -123,6 +123,33 @@ function ownedRowIds(entry: InstalledEntry, options: MaterializeOptions): string
   }
 }
 
+/**
+ * The discovery-root entries one installed plugin owns.
+ *
+ * Read from the record when present, for the same reason as `ownedRowIds`: one
+ * plugin materializes SEVERAL entries, named after its own `skills/` children,
+ * so a caller that recomputed them from the plugin name would move entries that
+ * do not exist and report a toggle that never happened. A record written before
+ * `skillIds` existed has none, so the entry is materialized to recover them, and
+ * the next sync persists the result.
+ *
+ * @param entry - the installed record to find skills for.
+ * @param options - where the entry's content lives, so an unannotated record can
+ * be materialized.
+ * @returns every discovery-root entry name the plugin owns; empty when it ships
+ * no discoverable skill.
+ */
+function ownedSkillIds(entry: InstalledEntry, options: MaterializeOptions): string[] {
+  if (entry.skillIds !== undefined) return entry.skillIds
+  try {
+    return materializeEntry(entry, options).skillIds
+  } catch {
+    // A missing or unreadable plugin directory is reported by the sync that
+    // follows; here it just means no skills can be named.
+    return []
+  }
+}
+
 function registryUrl(spec: string): string {
   return OFFICIAL_REGISTRY[spec.toLowerCase()] ?? spec
 }
@@ -311,14 +338,15 @@ export async function runMarketplace(args: readonly string[]): Promise<number> {
       // a recomputed `marketplace:<plugin>` matched no row, wrote nothing, and
       // still reported success.
       const rowIds = ownedRowIds(entry, ctx.sync.materialize)
+      const skillIds = ownedSkillIds(entry, ctx.sync.materialize)
       let rowsWritten = 0
       for (const id of rowIds) {
         if (setEnabled(ctx.sync.patchLayerPath, id, want)) rowsWritten += 1
       }
-      const skillsMoved = setSkillsEnabled(ctx.sync.materialize, plugin, want)
+      const skillsMoved = setSkillsEnabled(ctx.sync.materialize, plugin, skillIds, want)
 
       if (rowsWritten === 0 && !skillsMoved) {
-        const mounted = skillsEnabled(ctx.sync.materialize, plugin)
+        const mounted = skillsEnabled(ctx.sync.materialize, plugin, skillIds)
         if (mounted === undefined && rowIds.length === 0) {
           process.stderr.write(`${NAME}: ${plugin} mounts nothing (no runtime row and no skills)\n`)
           return 1

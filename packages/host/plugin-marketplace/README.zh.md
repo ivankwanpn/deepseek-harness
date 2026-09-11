@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-本包解析 Claude 兼容的 `marketplace.json`，按钉住的 commit 抓取一个插件，并在不让核心认识外部 schema 的前提下把它调和进 DSH：skill 落地到发现根目录，每个 `.mcp.json` 服务器成为一条 loader 行。启用是一个动词、两种机制——行上的 `disabled` 标志，以及把 skill 移出发现树。所有写入都只限于 marketplace 自己拥有的 id，因此用户自己的 patch 永远不会被改写。
+本包解析 Claude 兼容的 `marketplace.json`，按钉住的 commit 抓取一个插件，并在不让核心认识外部 schema 的前提下把它调和进 DSH：插件携带的每个 skill 都**平铺**落地到发现根目录，每个 `.mcp.json` 服务器成为一条 loader 行。启用是一个动词、两种机制——行上的 `disabled` 标志，以及把 skill 移出发现树。所有写入都只限于 marketplace 自己拥有的条目，因此用户自己的 patch 与 skill 永远不会被改写。
 
 ## 目录
 
@@ -40,9 +40,9 @@ const result = await installPlugin('aikido', {
 
 ### 一次安装会产出什么
 
-- **skill** 会被复制进 agents skills 根目录，`skill-filesystem` 在那里发现它们。发现是动态的，因此无需重启即可生效。
+- **skill** 会被复制进 agents skills 根目录，每个都直接位于其下——那是 `skill-filesystem` 唯一读取的层级。发现是动态的，因此无需重启即可生效。
 - **MCP 服务器**各成为一行，挂载 `@deepseek-ai/dsh-mcp-client`，并把插件的 `.mcp.json` 规范化为 DSH 的配置形态。
-- **一条状态记录**位于 harness home 之下，写明 marketplace、插件、钉住的 commit，以及内容最终落地的位置。
+- **一条状态记录**位于 harness home 之下，写明 marketplace、插件、钉住的 commit、内容最终落地的位置，以及该插件拥有哪些发现根目录条目。
 
 用户 patch 层由 Cordis HMR（热模块替换）监视，因此写入的行无需重启即可生效。
 
@@ -59,7 +59,7 @@ skill 与 loader 行的行为差异足够大，把它们合并起来在两个方
 
 | 内容 | 挂载方式 | 停用方式 |
 |---|---|---|
-| skill | 发现根目录下的目录 | 移到 `skills/.disabled/<plugin>` |
+| skill | 每个 skill 一个条目，直接位于发现根目录下 | 把拥有的每个条目移到 `<root>/.disabled/<plugin>/` |
 | MCP 服务器 | 一条 loader 行 | 该行的 `disabled` 标志 |
 
 对一条从未写入的行报告「已安装」会是假的，而把 skill 注册两次——一次靠发现、一次靠行——会让它们翻倍。因此 `enable`/`disable` 两者都做，并报告实际移动的是哪一方。
@@ -71,7 +71,9 @@ skill 与 loader 行的行为差异足够大，把它们合并起来在两个方
 
 把同一个事实拆到两个文件，就是「我停用了它，它又回来了」这类现象的成因，因此 `disabled` 只有一个归属。sync 在组合之前会把当前值读回来，手工编辑因此得以留存。
 
-行 id **不是**插件名称的函数：MCP 行的键是净化后的服务器名称，而一个插件可能声明多台服务器。安装会把解析出的 id 记入状态条目，`enable`/`disable` 只针对这些 id——调用方若自行重算 `marketplace:<plugin>`，将匹配不到任何行、什么也不写，却仍报告成功。
+行 id **不是**插件名称的函数：MCP 行的键是净化后的服务器名称，而一个插件可能声明多台服务器。安装会把解析出的 id 记入状态条目，`enable`/`disable` 只针对这些 id——调用方若自行重算 `marketplace:<plugin>`，将匹配不到任何行、什么也不写，却仍报告成功。skill 条目出于同样的理由以同样方式记录：发现根目录是平铺的，一个插件按 skill 逐个贡献条目，只有记录能说明是哪些。
+
+正因为根目录是平铺的，两个插件携带同名 skill 条目就是真实冲突。状态顺序中靠前的条目保留该名称，靠后的那个会被报告而非覆盖，因此任何一方都无法悄悄替换对方的 skill，或在卸载时删掉它。
 
 ### 指向 marketplace 内部的来源
 
@@ -143,6 +145,7 @@ manifest 条目可以用相对于 marketplace 仓库的路径指名内容（`./p
 - **没有更新或版本钉住策略。** 重新安装插件会就地替换它；钉在会移动的 ref（有 `ref` 却没有 `sha`）上的插件会被拒绝而不是被解析，这意味着这类条目根本无法安装。
 - **未钉住的条目需要显式 opt-in。** 官方 294 个条目中有 52 个以相对于 marketplace 仓库的路径指名内容，且没有一个带 `sha`。该路径会对那个仓库解析，但除非传入 `--allow-unpinned`，pin 规则仍会拒绝安装；该旗标会把来源的 ref 解析成它*现在*指向的 commit 并记录下来。这次安装因此是一个具体的 revision，可以要求它始终保持在该 revision 上，但它是某个 ref 的快照，并不保证下一次安装仍然一致。钉在会移动的 ref 上的条目则无论如何都不受影响。
 - **manifest 抓取是 GitHub 形状的。** repository url 会被解析成它的 `raw/main` manifest；其他主机则需要显式的 manifest url。
+- **skill 条目必须在插件的 `skills/` 目录顶层就能被发现。** 一个不含 `SKILL.md` 的目录，或一个非 Markdown 的文件，会被报告并跳过而不是复制：`skill-filesystem` 恰好只读一层，把它复制进发现根目录只会产出一个模型永远看不到的文件。
 - **注释保留是尽力而为。** 写 patch 层会重新序列化该文件，而完整 dump 留不住用户的注释。只有组合出的行确实发生变化时才会写入，且变更检测经过规范化，因此单是键序不同永远不会触发写入。
 
 <a id="dev-note"></a>
@@ -158,7 +161,11 @@ manifest 条目可以用相对于 marketplace 仓库的路径指名内容（`./p
 - 相对 marketplace 的来源被当作**相对 cwd 的路径**读取，因此每个以这种方式指名内容的条目都失败，报的是找不到本地文件。实测为 294 个中的 52 个。
 - 用「在 **manifest** url 后面追加 `.git`」来推导该来源的 clone url，得到的是 `…/raw/main.git`；raw 内容 url 不是仓库，因此这一映射改为显式且限定主机。
 - 磁盘上的能力比对**漏掉了 `commands/`**，因此每个带该目录的插件每次 sync 都永远报告「磁盘上的能力已变更」，原因是安装记录了一个比对永远找不到的能力。
+- `skills/` 子树被复制进一个**按插件隔离**的目录，比 `skill-filesystem` 读取的位置深了一层。安装、状态与设置面板全都报告成功，模型却一个 skill 都拿不到——发现它的是「向真实 provider 询问它究竟发现了什么」的探针，而任何只针对目标目录本身的断言都做不到。
+- 卸载删掉了插件目录，却**从未碰过发现根目录**，因为落地后的 skill 按设计就在它之外。只有被记录的拥有关系才让它们可被删除。
 
 ### 测试
 
 `tests/marketplace.spec.ts` 钉住这两条身份规则。每条断言都针对结果来写——patch 层实际持有什么、开关是否返回 true——因此它在重构下保持绿色，而在修正被回退时转红；两个行 id 测试与两个 url 测试都已确认在回退实现后失败。
+
+`tests/skills.spec.ts` 直接向真实的 `dsh-skill-filesystem` provider 询问它发现了什么，而不是把布局规则复述成路径字面量：其中落地测试对曾经发布的按插件隔离复制会失败，且已实测确认。

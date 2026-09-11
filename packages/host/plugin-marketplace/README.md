@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Parses a Claude-compatible `marketplace.json`, fetches one plugin at its pinned commit, and reconciles it into DSH without teaching the core the external schema: skills are materialized into the discovery root, and each `.mcp.json` server becomes one loader row. Enablement is one verb over two mechanisms — a row's `disabled` flag, and moving skills out of the discovery tree. Every write is limited to ids the marketplace owns, so a user's own patches are never rewritten.
+Parses a Claude-compatible `marketplace.json`, fetches one plugin at its pinned commit, and reconciles it into DSH without teaching the core the external schema: every skill a plugin ships is materialized FLAT into the discovery root, and each `.mcp.json` server becomes one loader row. Enablement is one verb over two mechanisms — a row's `disabled` flag, and moving skills out of the discovery tree. Every write is limited to entries the marketplace owns, so a user's own patches and skills are never rewritten.
 
 ## Table of Contents
 
@@ -40,9 +40,9 @@ const result = await installPlugin('aikido', {
 
 ### What an install produces
 
-- **skills** are copied into the agents skills root, where `skill-filesystem` discovers them. Discovery is dynamic, so they are live without a restart.
+- **skills** are copied into the agents skills root, each one directly under it, which is the only depth `skill-filesystem` reads. Discovery is dynamic, so they are live without a restart.
 - **MCP servers** each become one row mounting `@deepseek-ai/dsh-mcp-client`, with the plugin's `.mcp.json` normalized to DSH's config shape.
-- **one state record** under the harness home names the marketplace, the plugin, the pinned commit, and where the content landed.
+- **one state record** under the harness home names the marketplace, the plugin, the pinned commit, where the content landed, and which discovery-root entries the plugin owns.
 
 The user patch layer is watched through Cordis HMR, so a row takes effect without a restart.
 
@@ -58,7 +58,7 @@ Skills and loader rows behave differently enough that collapsing them would be w
 
 | Content | How it mounts | How it is disabled |
 |---|---|---|
-| skills | directory in the discovery root | moved to `skills/.disabled/<plugin>` |
+| skills | one entry per skill, directly under the discovery root | each owned entry moved to `<root>/.disabled/<plugin>/` |
 | MCP server | one loader row | the row's `disabled` flag |
 
 Reporting "installed" for a row that was never written would be false, and registering skills twice — once by discovery and once by row — would double them. `enable`/`disable` therefore does both and reports which one moved.
@@ -70,7 +70,9 @@ Reporting "installed" for a row that was never written would be false, and regis
 
 Splitting one fact across two files is how "I disabled it and it came back" happens, so `disabled` has exactly one home. A sync reads the current value back before composing, which is why a hand edit survives.
 
-A row id is **not** a function of the plugin name: an MCP row is keyed on the sanitized server name, and one plugin may declare several servers. The install records the ids it resolved into the state entry, and `enable`/`disable` address exactly those — a caller that recomputed `marketplace:<plugin>` would match no row, write nothing, and still report success.
+A row id is **not** a function of the plugin name: an MCP row is keyed on the sanitized server name, and one plugin may declare several servers. The install records the ids it resolved into the state entry, and `enable`/`disable` address exactly those — a caller that recomputed `marketplace:<plugin>` would match no row, write nothing, and still report success. Skill entries are recorded the same way for the same reason: the discovery root is flat, so one plugin contributes one entry per skill, and only the record says which.
+
+Because the root is flat, two plugins that ship a skill entry of the same name are a real conflict. The first entry in state order keeps the name and the second is reported instead of overwriting it, so neither plugin can silently replace the other's skill or delete it on uninstall.
 
 ### Sources that point inside the marketplace
 
@@ -138,6 +140,7 @@ Stable while the enabled server set is unchanged. Adding or removing a server ch
 - **No update or version-pinning policy.** Re-installing a plugin replaces it in place; a plugin pinned to a moving ref (`ref` without `sha`) is refused rather than resolved, which means such an entry cannot be installed at all.
 - **An unpinned entry needs an explicit opt-in.** 52 of the 294 official entries name their content relative to the marketplace repository and none of them carries a `sha`. The path is resolved against that repository, and the pin rule still declines the install unless `--allow-unpinned` is passed — which resolves the source's ref to the commit it names *now* and records that. The install is then one specific revision and can be held to it, but it is a snapshot of a ref, not a guarantee the next install matches. Entries pinned to a moving ref are unaffected either way.
 - **The manifest fetch is GitHub-shaped.** A repository url is resolved to its `raw/main` manifest; another host needs an explicit manifest url.
+- **A skill entry must be discoverable at the top of the plugin's `skills/` directory.** An entry that is a directory without `SKILL.md`, or a file that is not Markdown, is reported and skipped instead of copied: `skill-filesystem` reads exactly one level, so copying it into the discovery root would produce a file the model is never offered.
 - **Comment preservation is best-effort.** A patch-layer write re-serializes the file, and a full dump cannot keep the user's comments. Writes happen only when the composed rows actually change, and change detection is canonicalized so key order alone never triggers one.
 
 ### Dev Note
@@ -152,7 +155,11 @@ The failure modes this package was built against were all measured rather than a
 - a marketplace-relative source was read as a **cwd-relative path**, so every entry naming its content that way failed with a message about a missing local file. Measured at 52 of 294.
 - deriving that source's clone url by appending `.git` to the **manifest** url produced `…/raw/main.git`; a raw-content url is not a repository, so the mapping is explicit and host-scoped.
 - the on-disk capability comparison **omitted `commands/`**, so every plugin shipping one reported "capabilities changed on disk" on every sync forever, because the install recorded a capability the comparison could never find.
+- the `skills/` subtree was copied into a **plugin-scoped** directory, one level deeper than `skill-filesystem` reads. Install, state and the settings panel all reported success while the model was offered none of the skills — a probe that asked the real provider what it had discovered is what found it, and no assertion about the destination directory alone would have.
+- uninstall deleted the plugin directory but **never touched the discovery root**, because materialized skills live outside it by design. Only the recorded ownership makes them removable.
 
 ### Tests
 
 `tests/marketplace.spec.ts` pins both identity rules. Each assertion is written against the outcome — what the patch layer holds, whether a toggle returns true — so it stays green under refactoring and reddens when the fix is reverted; the two row-id tests and the two url tests were each confirmed to fail against a reverted implementation.
+
+`tests/skills.spec.ts` asks the REAL `dsh-skill-filesystem` provider what it discovered rather than restating the layout rule as a path literal: the materialization test fails against the plugin-scoped copy that shipped, and was confirmed to do so.

@@ -19,8 +19,8 @@
  * Enablement (`disabled`) is NOT decided here: the patch layer owns it (see
  * patch-layer.ts). These rows describe existence and shape only.
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import type { ManagedRow } from './patch-layer.ts'
 import { type InstalledCapability, type InstalledEntry } from './state.ts'
 
@@ -84,8 +84,16 @@ export interface MaterializeResult {
    * address rows that do not exist and silently toggle nothing.
    */
   rowIds: string[]
-  /** Where skills were copied, when the entry carries any. */
-  skillsDir?: string
+  /**
+   * Discovery-root entry names this entry owns, which are the names an installer
+   * must record so that enablement and uninstall can address them later.
+   *
+   * Kept because the root is FLAT and one plugin contributes SEVERAL entries: a
+   * caller that recomputed them from the plugin name would move entries that do
+   * not exist, delete a skill another plugin owns, or leave every one of them
+   * behind on uninstall.
+   */
+  skillIds: string[]
   /** Names of MCP servers derived from the plugin's `.mcp.json`. */
   mcpServers: string[]
   /** Non-fatal problems worth telling the user about. */
@@ -93,17 +101,54 @@ export interface MaterializeResult {
 }
 
 /**
- * `<agentsHome>/skills/<plugin>` — one directory per plugin, so uninstall is
- * one rm.
+ * The discovery root every materialized skill lands in, directly.
+ *
+ * FLAT is a requirement, not a preference: `skill-filesystem` reads one level
+ * and accepts `<root>/<name>/SKILL.md` or `<root>/<name>.md`, and nothing
+ * deeper (skill-filesystem/src/index.ts:719-747). A plugin-scoped subdirectory
+ * such as `<root>/<plugin>/<skill>/SKILL.md` therefore materializes files that
+ * the model is never offered.
  *
  * @param options - the harness home and, when pinned, the skills root to use.
- * @param plugin - the entry name from the marketplace state; it becomes the
- * directory name.
- * @returns the absolute live skills directory, whether or not it exists yet.
+ * @returns the absolute discovery root, whether or not it exists yet.
  */
-export function skillsDirFor(options: MaterializeOptions, plugin: string): string {
-  const base = options.agentsSkillsDir ?? defaultAgentsSkillsDir(options.harnessHome)
-  return join(base, plugin)
+export function skillsRootDir(options: MaterializeOptions): string {
+  return options.agentsSkillsDir ?? defaultAgentsSkillsDir(options.harnessHome)
+}
+
+/**
+ * The discovery-root entries a plugin's `skills/` directory provides.
+ *
+ * An entry counts only in a form `skill-filesystem` discovers: a directory
+ * holding `SKILL.md` at its top level, or a Markdown file. Anything else is
+ * reported as skipped rather than copied, because content that lands in the
+ * discovery root without being discoverable is exactly the silent failure this
+ * package exists to avoid.
+ *
+ * @param sourceRoot - the installed plugin's directory.
+ * @returns the discoverable entry names in sorted order, plus the names skipped
+ * because discovery would not see them.
+ */
+export function skillEntryNames(sourceRoot: string): { names: string[]; skipped: string[] } {
+  const source = join(sourceRoot, 'skills')
+  let entries
+  try {
+    entries = readdirSync(source, { withFileTypes: true, encoding: 'utf8' })
+  } catch {
+    // A plugin without a `skills/` directory carries no skills; that is a normal
+    // shape, not a failure worth reporting.
+    return { names: [], skipped: [] }
+  }
+  const names: string[] = []
+  const skipped: string[] = []
+  for (const entry of entries) {
+    const discoverable = entry.isDirectory()
+      ? existsSync(join(source, entry.name, 'SKILL.md'))
+      : entry.isFile() && entry.name.endsWith('.md')
+    if (discoverable) names.push(entry.name)
+    else skipped.push(entry.name)
+  }
+  return { names: names.sort(), skipped: skipped.sort() }
 }
 
 /**
@@ -258,10 +303,11 @@ export function sanitizeServerName(name: string, warnings: string[]): string {
 /**
  * Copy skills out of an installed plugin into the discovery root.
  *
- * Idempotent by replacement: the destination is removed first, so a plugin
- * upgrade cannot leave skills from the previous revision behind. That matters
- * because the discovery root is flat — a stale `skills/<name>` would keep being
- * offered to the model with no trace of where it came from.
+ * Idempotent by replacement: every owned entry is removed before it is copied,
+ * so a plugin upgrade cannot leave skills from the previous revision behind. That
+ * matters because the discovery root is flat — a stale `<name>` would keep being
+ * offered to the model with no trace of where it came from. Names the previous
+ * sync owned and this one does not are removed for the same reason.
  *
  * SKIPS a plugin whose skills are currently parked by `setSkillsEnabled`. Without
  * that check a sync would faithfully re-copy the tree and silently UNDO a
@@ -272,19 +318,91 @@ export function sanitizeServerName(name: string, warnings: string[]): string {
  * what gets copied.
  * @param options - the harness home and skills root the destination and the
  * parked copy are both derived from.
- * @param plugin - the entry name from the marketplace state; it names the
- * destination directory and selects the enablement check.
- * @returns the destination directory, or undefined when there are no skills.
+ * @param plugin - the entry name from the marketplace state; it selects the
+ * enablement check and names the parking directory.
+ * @param previous - entry names the last sync materialized for this plugin, so
+ * names the plugin no longer ships stop being offered.
+ * @param claimed - discovery-root entry names another installed plugin already
+ * owns, mapped to that plugin. The root is flat, so a duplicate is a real
+ * conflict: silently copying would overwrite the other plugin's skill and make
+ * one uninstall delete the other's content.
+ * @returns the names this plugin now owns, and the non-fatal problems found.
  */
-export function materializeSkills(sourceRoot: string, options: MaterializeOptions, plugin: string): string | undefined {
+export function materializeSkills(
+  sourceRoot: string,
+  options: MaterializeOptions,
+  plugin: string,
+  previous: readonly string[],
+  claimed: ReadonlyMap<string, string> = new Map<string, string>(),
+): { skillIds: string[]; warnings: string[] } {
+  const warnings: string[] = []
   const source = join(sourceRoot, 'skills')
-  if (!existsSync(source)) return undefined
-  if (skillsEnabled(options, plugin) === false) return undefined
-  const destination = skillsDirFor(options, plugin)
-  rmSync(destination, { recursive: true, force: true })
-  mkdirSync(join(destination, '..'), { recursive: true })
-  cpSync(source, destination, { recursive: true })
-  return destination
+  if (!existsSync(source)) return { skillIds: [], warnings }
+  const root = skillsRootDir(options)
+  const parked = disabledSkillsDir(options, plugin)
+  const discovered = skillEntryNames(sourceRoot)
+  for (const name of discovered.skipped) {
+    warnings.push(`skills/${name} ships no SKILL.md and is not discoverable, so it was not materialized`)
+  }
+  const skillIds = discovered.names.filter((name) => {
+    const owner = claimed.get(name)
+    if (owner === undefined) return true
+    warnings.push(`skill ${name} is already provided by ${owner} and was not materialized`)
+    return false
+  })
+
+  removeMaterializedSkills(options, plugin, previous.filter(name => !skillIds.includes(name)))
+  // A parked plugin keeps its content outside discovery; re-copying would undo
+  // the disable. The names are still reported so a later enable knows what to
+  // move back.
+  if (existsSync(parked)) return { skillIds, warnings }
+
+  mkdirSync(root, { recursive: true })
+  for (const name of skillIds) {
+    const destination = join(root, name)
+    rmSync(destination, { recursive: true, force: true })
+    cpSync(join(source, name), destination, { recursive: true })
+  }
+  return { skillIds, warnings }
+}
+
+/**
+ * Remove discovery-root entries this plugin owns.
+ *
+ * Two layouts are cleaned: the flat entries named here, and the plugin-scoped
+ * directory an earlier build wrote (`<root>/<plugin>/<skill>/SKILL.md`), which
+ * discovery never saw and which would otherwise outlive its record forever.
+ *
+ * @param options - the harness home and skills root both layouts are derived
+ * from.
+ * @param plugin - the entry name from the marketplace state.
+ * @param names - the discovery-root entry names to delete.
+ * @returns the names that existed and were removed.
+ */
+export function removeMaterializedSkills(
+  options: MaterializeOptions,
+  plugin: string,
+  names: readonly string[],
+): string[] {
+  const root = skillsRootDir(options)
+  const parked = disabledSkillsDir(options, plugin)
+  const removed: string[] = []
+  for (const name of names) {
+    for (const from of [join(root, name), join(parked, name)]) {
+      if (!existsSync(from)) continue
+      rmSync(from, { recursive: true, force: true })
+      removed.push(name)
+    }
+  }
+  rmSync(parked, { recursive: true, force: true })
+  const legacy = join(root, plugin)
+  // Removed only when it is the container an earlier build wrote rather than a
+  // discoverable skill some plugin owns: a top-level SKILL.md means it is a real
+  // entry that this plugin's uninstall must not delete.
+  if (existsSync(legacy) && !existsSync(join(legacy, 'SKILL.md'))) {
+    rmSync(legacy, { recursive: true, force: true })
+  }
+  return removed
 }
 
 /**
@@ -313,22 +431,17 @@ export function readPluginMcp(sourceRoot: string, warnings: string[]): Normalize
 /**
  * Where a disabled plugin's skills are parked.
  *
- * A dot-prefixed SIBLING of the live directory, not a subdirectory of it:
- * `skill-filesystem` walks one level for `<name>/SKILL.md`, so a directory named
- * `.disabled` would still be discovered as a skill named `.disabled` and, worse,
- * a nested `skills/.disabled/<plugin>/<skill>` would be walked as a skill
- * directory. Keeping it next to (not inside) the root removes it from discovery
- * without relying on the scanner ignoring dotfiles.
+ * `<root>/.disabled/<plugin>`: a dot-prefixed SIBLING of the entries themselves.
+ * `skill-filesystem` reads one level for `<name>/SKILL.md`, so `.disabled` is a
+ * directory without a top-level `SKILL.md` and contributes nothing, while parking
+ * under the live names would instead have to be kept clear of every plugin's own
+ * skill names to stay invisible.
  */
 export const DISABLED_SKILLS_DIRNAME = '.disabled'
 
 /**
  * Where a plugin's skills are parked while it is disabled:
- * `<skillsRoot>/.disabled/<plugin>`.
- *
- * A SIBLING of the live directory rather than a child of it, so the skills
- * scanner never walks into it — DISABLED_SKILLS_DIRNAME records why nesting
- * would have been discovered instead of ignored.
+ * `<root>/.disabled/<plugin>`.
  *
  * @param options - the harness home and skills root the parking directory is
  * derived from.
@@ -336,8 +449,7 @@ export const DISABLED_SKILLS_DIRNAME = '.disabled'
  * @returns the absolute parking directory, whether or not it exists.
  */
 export function disabledSkillsDir(options: MaterializeOptions, plugin: string): string {
-  const live = skillsDirFor(options, plugin)
-  return join(live, '..', DISABLED_SKILLS_DIRNAME, plugin)
+  return join(skillsRootDir(options), DISABLED_SKILLS_DIRNAME, plugin)
 }
 
 /**
@@ -347,24 +459,40 @@ export function disabledSkillsDir(options: MaterializeOptions, plugin: string): 
  * to turn them off is to take them out of the discovery tree. Moving preserves
  * the content, so re-enabling needs no re-fetch and no network.
  *
+ * The names come from the record rather than from the plugin directory: one
+ * plugin materializes SEVERAL root entries, and which ones is not a function of
+ * the plugin name (see `skillIds` in state.ts).
+ *
  * @param options - the harness home and skills root both directories are derived
  * from.
  * @param plugin - the entry name from the marketplace state.
+ * @param skillIds - the discovery-root entry names this plugin owns.
  * @param enabled - true to move skills back into discovery, false to park them
  * outside it.
- * @returns true when something moved; false when the plugin has no skills or was
+ * @returns true when something moved; false when the plugin owns no skills or was
  * already in the requested state.
  */
-export function setSkillsEnabled(options: MaterializeOptions, plugin: string, enabled: boolean): boolean {
-  const live = skillsDirFor(options, plugin)
+export function setSkillsEnabled(
+  options: MaterializeOptions,
+  plugin: string,
+  skillIds: readonly string[],
+  enabled: boolean,
+): boolean {
+  const root = skillsRootDir(options)
   const parked = disabledSkillsDir(options, plugin)
-  const from = enabled ? parked : live
-  const to = enabled ? live : parked
-  if (!existsSync(from)) return false
-  rmSync(to, { recursive: true, force: true })
-  mkdirSync(join(to, '..'), { recursive: true })
-  renameSync(from, to)
-  return true
+  const from = enabled ? parked : root
+  const to = enabled ? root : parked
+  let moved = false
+  for (const name of skillIds) {
+    const source = join(from, name)
+    if (!existsSync(source)) continue
+    const destination = join(to, name)
+    rmSync(destination, { recursive: true, force: true })
+    mkdirSync(dirname(destination), { recursive: true })
+    renameSync(source, destination)
+    moved = true
+  }
+  return moved
 }
 
 /**
@@ -378,14 +506,20 @@ export function setSkillsEnabled(options: MaterializeOptions, plugin: string, en
  * @param options - the harness home and skills root both directories are derived
  * from.
  * @param plugin - the entry name from the marketplace state.
- * @returns true when the live directory exists, false when only the parked one
- * does, and undefined when neither exists.
+ * @param skillIds - the discovery-root entry names this plugin owns.
+ * @returns true when any owned entry is live, false when only parked copies
+ * exist, and undefined when neither does.
  */
-export function skillsEnabled(options: MaterializeOptions, plugin: string): boolean | undefined {
-  const live = existsSync(skillsDirFor(options, plugin))
-  const parked = existsSync(disabledSkillsDir(options, plugin))
-  if (live) return true
-  if (parked) return false
+export function skillsEnabled(
+  options: MaterializeOptions,
+  plugin: string,
+  skillIds: readonly string[],
+): boolean | undefined {
+  if (skillIds.length === 0) return undefined
+  const root = skillsRootDir(options)
+  const parked = disabledSkillsDir(options, plugin)
+  if (skillIds.some(name => existsSync(join(root, name)))) return true
+  if (skillIds.some(name => existsSync(join(parked, name)))) return false
   return undefined
 }
 
@@ -397,21 +531,26 @@ export function skillsEnabled(options: MaterializeOptions, plugin: string): bool
  * the recorded set used only to explain a mismatch.
  *
  * @param entry - the installed record to materialize; only its `plugin`,
- * `installPath`, and advisory `capabilities` are read.
+ * `installPath`, `skillIds`, and advisory `capabilities` are read.
  * @param options - the harness home and skills root materialization writes to.
- * @returns the rows that mount the entry, where its skills landed when it has
- * any, the server names it declares, and the non-fatal problems found on disk.
+ * @param claimedSkills - discovery-root entry names another installed plugin
+ * already owns, mapped to that plugin, so a duplicate is reported instead of
+ * overwriting it.
+ * @returns the rows that mount the entry, the skill entries it owns, the server
+ * names it declares, and the non-fatal problems found on disk.
  */
 export function materializeEntry(
   entry: InstalledEntry,
   options: MaterializeOptions,
+  claimedSkills: ReadonlyMap<string, string> = new Map<string, string>(),
 ): MaterializeResult {
   const rows: ManagedRow[] = []
   const warnings: string[] = []
   const onDisk: InstalledCapability[] = []
 
-  const skillsDir = materializeSkills(entry.installPath, options, entry.plugin)
-  if (skillsDir !== undefined) onDisk.push('skills')
+  const skills = materializeSkills(entry.installPath, options, entry.plugin, entry.skillIds ?? [], claimedSkills)
+  for (const warning of skills.warnings) warnings.push(warning)
+  if (isDirectory(join(entry.installPath, 'skills'))) onDisk.push('skills')
 
   // `commands/` is DETECTED but not materialized (see Known Limitations), so it
   // contributes no row and no mount — but it must still be counted here. This
@@ -461,7 +600,7 @@ export function materializeEntry(
   return {
     rows,
     rowIds: rows.map(row => row.id),
-    ...(skillsDir !== undefined ? { skillsDir } : {}),
+    skillIds: skills.skillIds,
     mcpServers: servers.map(s => s.name),
     warnings,
   }

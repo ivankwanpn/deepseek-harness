@@ -56,6 +56,20 @@ export interface InstalledEntry {
    * the next sync fills it in.
    */
   rowIds?: string[]
+  /**
+   * Discovery-root entries this entry owns, as last materialized by sync.
+   *
+   * Recorded rather than recomputed for the same reason as `rowIds`: the skills
+   * root is FLAT, so one plugin contributes SEVERAL entries named after its own
+   * `skills/` children, and the set changes when the plugin's content does.
+   * Enablement and uninstall address exactly these names — a caller that
+   * recomputed them would move entries that do not exist, or leave every
+   * materialized skill behind on uninstall.
+   *
+   * Optional: a state file written before this field existed still loads, and
+   * the next sync fills it in.
+   */
+  skillIds?: string[]
   /** Capabilities detected on disk after fetching. */
   capabilities: readonly InstalledCapability[]
   installedAt: string
@@ -188,6 +202,12 @@ function parseInstalled(raw: unknown, index: number): InstalledEntry {
   const rowIds = Array.isArray(raw.rowIds)
     ? raw.rowIds.filter((id): id is string => typeof id === 'string' && id !== '')
     : undefined
+  // Sanitized for the same reason as rowIds: a name that is not a non-empty
+  // string cannot address a discovery-root entry, and keeping it would make
+  // enablement and uninstall silently skip that skill.
+  const skillIds = Array.isArray(raw.skillIds)
+    ? raw.skillIds.filter((id): id is string => typeof id === 'string' && id !== '')
+    : undefined
   const repoUrl = asString(raw.repoUrl)
   return {
     ...required,
@@ -195,6 +215,7 @@ function parseInstalled(raw: unknown, index: number): InstalledEntry {
     ...(subdirectory !== undefined ? { subdirectory } : {}),
     ...(repoUrl !== undefined ? { repoUrl } : {}),
     ...(rowIds !== undefined ? { rowIds } : {}),
+    ...(skillIds !== undefined ? { skillIds } : {}),
     capabilities,
   }
 }
