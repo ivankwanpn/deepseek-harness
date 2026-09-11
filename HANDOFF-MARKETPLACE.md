@@ -1,4 +1,4 @@
-# Handoff — DSH fork: plugin marketplace + web panel (2026-09-11)
+# Handoff — DSH 獨立 repo：plugin marketplace + web 面板（2026-09-11）
 
 接手對象：下一個 session／另一台機器。本文假設你**沒有**本次對話的上下文。
 
@@ -9,21 +9,34 @@
 | 項目 | 值 |
 |---|---|
 | 本機工作區 | `D:\deepseek-harness` |
-| 你的 fork | `https://github.com/ivankwanpn/deepseek-harness` |
-| 上游 | `https://github.com/deepseek-ai/deepseek-harness`（remote 名 `origin`） |
+| **主 repo（已獨立）** | `https://github.com/ivankwanpn/deepseek-harness`（remote 名 **`origin`**） |
+| 上游（只讀保留） | `https://github.com/deepseek-ai/deepseek-harness`（remote 名 **`upstream`**） |
 | 本次分支 | `feat/plugin-marketplace` |
-| 本次 commit | `de1f0309ef`（44 檔、+5050 / −1） |
-| 已推上 fork？ | 是。**尚未開 PR 回上游**（`gh pr list` 為空，是刻意的，等你裁定） |
+| feature commit | `de1f0309ef`（44 檔、+5050 / −1） |
+| handoff commit | `71b13b826e` |
+| 是否仍是 fork？ | **不是。** 2026-09-11 已 `Leave fork network`，GitHub API 回報 `fork: false`、無 parent |
 
-`origin` 仍指向官方 repo、`fork` 指向你的 fork。要開 PR：
+**remote 佈局（2026-09-11 起）**：
 
 ```
-gh pr create --repo deepseek-ai/deepseek-harness --base master --head ivankwanpn:feat/plugin-marketplace
+origin    https://github.com/ivankwanpn/deepseek-harness   ← 你的 repo，主要推送目標
+upstream  https://github.com/deepseek-ai/deepseek-harness  ← 只讀保留，方便日後手動 fetch 參考
 ```
+
+`upstream` **只讀**，不要推它。它的存在只是讓我們哪天想參考上游演進、或改變主意想回頭貢獻時路還在；不需要就 `git remote remove upstream`。
+
+**已無法用 `gh pr create` 送 PR 回上游** —— 這是脫離 fork network 的必然代價（不可逆）。若日後要貢獻，只能 `git format-patch` 手動處理。
 
 ## 2. 交接前請先知道的三件事
 
-**（1）這是一個新套件，但它是「未追蹤 → 已提交」的狀態。** 上游 `master` 完全沒有這些檔案；所有東西都在 `feat/plugin-marketplace` 這一個 commit 裡。
+**（1）這些檔案只存在於 `feat/plugin-marketplace` 分支。** `master` 上完全沒有 marketplace 相關檔案；兩個 commit（`de1f0309ef` 功能 + `71b13b826e` handoff）都在該分支上。
+
+**（1b）分支基底比 `master` 舊 134 個 commit。** 這是預期且已知的狀態：
+
+- `feat/plugin-marketplace` 從 `aa8262ec09` 分出，那是建立 fork 當時的 `master`。
+- `master` 已經到了 `c291e7961a`，含上游的 `release(dsh): 0.1.5-rc.2`。
+- **`master` 上那 134 個 commit 完整保留**（脫離 fork network 沒有丟掉任何東西）。
+- 所以：功能可用、與 `master` 的差異只在 marketplace 這 44 個檔案，但**基底較舊**。若你要拿最新的 0.1.5-rc.2 當基底，需要把這個分支 rebase 到 `master`（我沒有做，因為那要 force-push 且可能有衝突——未經確認不該動已推送的歷史）。
 
 **（2）建置順序有硬依賴。** 前端套件的 tsdown 需要先有 `tsc` 產出的 `lib/types/`，否則會 `UNRESOLVED_ENTRY: Cannot resolve entry module lib/types/index.js`：
 
@@ -97,5 +110,19 @@ npx tsdown --env.DSH_BUILD_FACE client
 
 1. 在**新機器**上 `pnpm install` → `pnpm run build`，確認 `npx oxlint packages` 與 `npx vitest run packages/host/plugin-marketplace` 都乾淨。
 2. 起 `dsh web`，開 Settings → Plugins → **Marketplace**，確認面板會渲染（空狀態也要正常顯示，不該是錯誤畫面）。
-3. 決定要不要開 PR 回上游。
+3. 決定要不要把 `feat/plugin-marketplace` rebase 到 `master`（見 §2 第 1b 點）。
 4. 若要做第二階段（可寫入的 web 面板），先設計權限與確認流程，再動手。
+
+## 9. 這次「脫離 fork network」的完整經過（給接手的人除錯用）
+
+如果你之後又要做類似的事，這幾個症狀都是**正常的中間狀態**，不要誤判成失敗（我第一次就誤判了）：
+
+| 階段 | GitHub API | 能做什麼 |
+|---|---|---|
+| 剛按下 Leave fork network | `fork: true`、**Settings 顯示 `Detach is in progress.`** | 什麼都不能做，**等**。重試無用 |
+| 進行中嘗試 push | **HTTP 403 `Your repository is disabled`** | 這是「暫時不可用」，不是真的被停權 |
+| 完成後 | `fork: false`、`parent` 消失、`disabled: false`、網頁 HTTP 200 | 正常推送 |
+
+**我犯的錯**：只查 API 看到 `fork: true` 就告訴使用者「detach 沒生效、可能是你沒按完」——當時它其實正在跑。**判斷非同步操作的狀態時，要一併看它自己的進度指示（Settings 頁的 `Detach is in progress.`），不能只看最終欄位。**
+
+另外一個真實的坑：**detach 後 `push master` 可能被拒（`Updates were rejected because the remote contains work that you do not have locally`）**。這不是 detach 出錯——是 fork 建立時遠端就已經比本機新（本例差 134 個 commit）。**此時正確做法是 `git fetch` 然後 `git merge --ff-only origin/master`，絕不要 force push**，否則會親手刪掉上游那些 commit。
