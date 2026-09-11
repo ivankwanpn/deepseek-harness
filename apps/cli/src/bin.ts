@@ -41,6 +41,13 @@ export async function runCli(): Promise<void> {
       break
     }
     case 'plugin': {
+      // `dsh plugin marketplace …` is OUR subcommand; every other argument is
+      // forwarded to pnpm verbatim. Intercepting on the first token keeps the
+      // forward-to-pnpm contract intact for everything else.
+      if (invocation.args[0] === 'marketplace') {
+        const { runMarketplace } = await import('@deepseek-ai/dsh-host-plugin-marketplace/marketplace-command')
+        process.exit(await runMarketplace(invocation.args.slice(1)))
+      }
       const { runPlugin } = await import('./plugin.ts')
       process.exit(runPlugin(invocation.profile, invocation.args))
       break
