@@ -64,6 +64,7 @@ npx tsdown --env.DSH_BUILD_FACE client
 
 1. **列 id 不是外掛名稱的函式。** MCP 列以**淨化後的伺服器名稱**為鍵（`marketplace:mcp:<serverName>`），而一個外掛可以宣告多個伺服器。所以列 id 在**安裝時**就被記錄進 state（`entry.rowIds`），`enable`/`disable`/`installed` 讀回它。**若你看到有人把它改回 `marketplace:<plugin>` 的重算寫法，那是迴歸**——它會匹配不到任何列、什麼都沒寫，卻回報成功。有測試釘住這件事。
 2. **讀取絕不落地。** `materializeEntry` 會複製 skills、甚至把 skills 搬到 `.disabled`，那是**寫入**。gateway 因此改從 `.mcp.json` 推導列 id。有一個測試用整棵目錄樹的快照比對來釘住「讀取不改變磁碟」，把它換成 `materializeEntry` 會讓 3 個測試轉紅。
+3. **skill 的落地佈局必須是平鋪的，而且擁有關係要記錄。** 發現根目錄是平的：`skill-filesystem` 只讀 `<root>/<name>/SKILL.md` 或 `<root>/<name>.md`，**不遞迴**，所以外掛的每個 skill 都直接落在根目錄下，名稱記進 state（`entry.skillIds`），`enable`/`disable`/`uninstall` 只針對這些名稱。**若你看到有人把落地改回 `<root>/<plugin>/…` 的巢狀寫法，那是迴歸**——`install` 會回報成功、state 會記錄 `skills`、面板會顯示已安裝，而模型一個 skill 都拿不到；卸載也會留下孤兒。決策、備選方案與測試見 Agent Note：[2026-09-11-marketplace-skills-land-flat.md](.agents/notes/implemented/bug-fix/2026-09-11-marketplace-skills-land-flat.md)。
 
 ## 4. 驗證基線（這些是已實跑過的，不是聲稱）
 
@@ -73,12 +74,17 @@ npx tsdown --env.DSH_BUILD_FACE client
 | `npx tsc -b tsconfig.host.json` | exit 0 |
 | `npx tsc -b tsconfig.client.json` | exit 0 |
 | `npx oxlint packages` | **0 errors / 0 warnings** |
-| `npx vitest run packages/host/plugin-marketplace` | 17 passed（marketplace 10 + gateway 7） |
+| `npx vitest run packages/host/plugin-marketplace` | 28 passed（marketplace 10 + gateway 7 + skills 11） |
 | 16 個 `verify-*` 閘門 | PASS |
 
 閘門清單：`verify-export-jsdoc`、`verify-package-invariants`、`verify-package-readme-{summaries,model-experience,limitations}`、`verify-dsh-package-licenses`、`verify-package-paths`、`verify-config-source-ownership`、`verify-translation-pairing`、`verify-tsconfig-paths`、`verify-package-dependencies`、`verify-runtime-closure`、`verify-vendored-links`、`verify-md-wrap`、`verify-md-links`、`verify-client-catalog`。
 
-**唯一紅的閘門：`verify-cordis-config`** —— 與本次變更無關。成因：這個 checkout 的 `core.symlinks=false`，使 `apps/cli/tests/profiles/acp/cordis.yml` 等 **11 個 git mode `120000` 的符號連結**被實體化成內容為目標路徑的純文字檔，閘門讀到字串而非 Loader 陣列。**無管理員權限無法修**（建立符號連結需要該權限或開啟開發者模式）。換到 Linux/macOS 或以管理員權限重新 checkout 即消失。
+**兩個紅的閘門，同一個根源：`verify-cordis-config` 與 `verify-node-next-types`** —— 都與 marketplace 變更無關，成因是這台機器**建立不了符號連結**（行程非管理員、未開 Windows 開發人員模式；`fs.symlinkSync(..., 'dir')` 實測回 `EPERM`，而 junction 不受影響）。
+
+- `verify-cordis-config`：這個 checkout 的 `core.symlinks=false`，使 `apps/cli/tests/profiles/acp/cordis.yml` 等 **11 個 git mode `120000` 的符號連結**被實體化成內容為目標路徑的純文字檔（`.agents/notes/implemented/CLAUDE.md` 的內容就是 `AGENTS.md` 一行字），閘門讀到字串而非 Loader 陣列。
+- `verify-node-next-types`：該閘門用 `fs.symlinkSync` 建一個臨時消費者專案，在連結階段就 `EPERM`，因此**只印「typecheck failed」而沒有任何 tsc 錯誤訊息**——看到這種空錯誤就是它，不是型別問題。
+
+**判斷法**：hygiene 的紅燈只要沒有具體的 `error TS` 或檔案路徑，就是這兩個環境問題。開啟 Windows 開發人員模式（再以 `core.symlinks=true` 重新 checkout 那 11 個檔案），或以管理員權限執行該閘門，即消失；CI 跑在 Linux 上不受影響。
 
 ## 5. 這台機器／這個 checkout 的環境事實
 
@@ -104,7 +110,7 @@ npx tsdown --env.DSH_BUILD_FACE client
 - **`commands/` 能力偵測得到但掛不上。** 已查證根因：Claude 的指令是一個 Markdown 提示詞（`## Your Task` …），「呼叫它」等於把該文字送給模型；而 DSH 的 `CommandDefinition.handler` 明文寫著「對接收的 agent 執行，**不把指令送給模型**」，`CommandInvocation` 沒有任何通往模型的路徑。這是**格式缺口，不是接線缺口**——要支援得先讓核心具備「提示展開式指令」。
 - **52 個官方 registry 條目仍無法安裝。** 它們以相對路徑指名內容且無一帶 `sha`；`--allow-unpinned` 會把 ref 解析成當下的 commit 並記錄，但那是快照、不是重現性保證。
 - **`scripts/dsh-net-probe.mjs`** 已包含在此 commit，它是 Node 網路診斷工具（區分 DNS/TCP/TLS/proxy），與 marketplace 無關。若想讓 commit 單一主題，可拆出去。
-- **`verify-cordis-config`** 紅燈（見 §4）。
+- **`verify-cordis-config` 與 `verify-node-next-types`** 紅燈（見 §4），同一個環境根源，與 marketplace 無關。
 
 ## 8. 建議的下一步順序
 
