@@ -196,6 +196,37 @@ describe('marketplace controls', () => {
     await waitFor(() => { expect(uninstall).toHaveBeenCalledWith('superpowers') })
   })
 
+  // The dialog labels its close control and its cancel button with the same
+  // copy, so the footer's cancel is the last control carrying that name.
+  it('closes the uninstall confirmation without asking the Host', async () => {
+    const { uninstall } = mount(status())
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Uninstall' }))[0]!)
+    const dialog = await screen.findByRole('dialog', { name: /superpowers/u })
+    fireEvent.click(within(dialog).getByRole('checkbox'))
+    const cancels = within(dialog).getAllByRole('button', { name: en.uninstallCancel })
+    fireEvent.click(cancels[cancels.length - 1]!)
+
+    await waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull() })
+    expect(uninstall).not.toHaveBeenCalled()
+  })
+
+  it('prints a refusal that is not an Error as its own text', async () => {
+    const { uninstall } = mount(status(), {
+      // The panel reports whatever the write threw, so a refusal that arrives as
+      // a bare value still has to reach the card instead of a blank failure.
+      uninstall: vi.fn(() => Promise.reject('marketplace refused')),
+    })
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Uninstall' }))[0]!)
+    const dialog = await screen.findByRole('dialog', { name: /superpowers/u })
+    fireEvent.click(within(dialog).getByRole('checkbox'))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Uninstall' }))
+
+    await waitFor(() => { expect(uninstall).toHaveBeenCalledWith('superpowers') })
+    expect(await screen.findByText(/marketplace refused/u)).toBeTruthy()
+  })
+
   it('reports a refused write on the plugin it was refused for', async () => {
     mount(status(), {
       setEnabled: vi.fn(async () => { throw new Error('marketplace/read-only: refused') }),
