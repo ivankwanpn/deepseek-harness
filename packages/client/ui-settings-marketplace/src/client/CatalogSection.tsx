@@ -18,13 +18,16 @@ import css from './MarketplaceSettingsTab.module.css'
 /**
  * Whether one row matches a filter, by the same fields the CLI searches.
  * @param row - the catalog row to test.
- * @param query - the current filter text; empty matches everything.
+ * @param query - the current filter text; blank matches everything.
  * @returns whether the row stays visible.
  */
 export function matchesQuery(row: MarketplaceCatalogView['rows'][number], query: string): boolean {
-  if (query === '') return true
+  // Trimmed like the CLI's joined arguments, so a stray space cannot exclude
+  // every row, and a blank filter means "no filter" rather than "no match".
+  const needle = query.trim().toLowerCase()
+  if (needle === '') return true
   const haystack = `${row.plugin} ${row.description ?? ''} ${row.category ?? ''} ${row.tags.join(' ')}`.toLowerCase()
-  return haystack.includes(query.toLowerCase())
+  return haystack.includes(needle)
 }
 
 /** The section's props, threaded from the tab's owner site. */

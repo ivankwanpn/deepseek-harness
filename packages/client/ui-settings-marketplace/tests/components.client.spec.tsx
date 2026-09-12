@@ -342,4 +342,14 @@ describe('catalog filter', () => {
     expect(matchesQuery(sparse, 'hooks')).toBe(true)
     expect(matchesQuery(sparse, 'vcs')).toBe(false)
   })
+
+  it('ignores whitespace around the filter, as the CLI does', () => {
+    // The CLI trims the query it joined from its arguments; a stray leading or
+    // trailing space in the panel must not become a filter that matches nothing.
+    expect(matchesQuery(searchable, '  hooks  ')).toBe(true)
+    expect(matchesQuery(searchable, ' commit flow ')).toBe(true)
+    expect(matchesQuery(searchable, '  aikido  ')).toBe(false)
+    // Whitespace alone is no filter at all, exactly as the empty query is.
+    expect(matchesQuery(searchable, '   ')).toBe(true)
+  })
 })
