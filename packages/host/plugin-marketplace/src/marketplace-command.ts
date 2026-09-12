@@ -104,6 +104,21 @@ function normalizeUrl(spec: string): string {
 }
 
 /**
+ * The text a caught failure reports.
+ *
+ * A throw is `unknown`, and the surfaces below differ in what reaches them:
+ * install runs third-party plugin code, which can throw a bare string, while a
+ * registry fetch wraps everything into an `Error` before it escapes. One
+ * definition keeps the two diagnostics identical and the coercion in one place.
+ *
+ * @param error - the caught value.
+ * @returns its message, or the value's own text.
+ */
+function failureText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/**
  * Run one marketplace invocation.
  *
  * @param args - the subcommand and its operands, already stripped of the
@@ -131,12 +146,22 @@ export async function runMarketplace(args: readonly string[]): Promise<number> {
       // in the state file and fail every later command with a different error.
       // A repo url is resolved to its manifest; the resolved manifest url is
       // what gets stored, so later commands never re-guess a location.
-      const { marketplace: market, manifestUrl } = await fetchMarketplaceFrom(url)
-      const next = addMarketplace(ctx.state, market.name, manifestUrl)
-      saveState(ctx.statePath, next)
-      process.stdout.write(`registered ${market.name} (${String(market.plugins.length)} plugins)\n`)
-      process.stdout.write(`  from ${manifestUrl}\n`)
-      return 0
+      //
+      // A spec that cannot be fetched is a diagnosis rather than a crash: this is
+      // where a user types a registry, so a failure is reported the way install
+      // reports one. An escaping rejection reaches bin.ts's `process.exit(await
+      // …)` as an unhandled rejection instead of as a message.
+      try {
+        const { marketplace: market, manifestUrl } = await fetchMarketplaceFrom(url)
+        const next = addMarketplace(ctx.state, market.name, manifestUrl)
+        saveState(ctx.statePath, next)
+        process.stdout.write(`registered ${market.name} (${String(market.plugins.length)} plugins)\n`)
+        process.stdout.write(`  from ${manifestUrl}\n`)
+        return 0
+      } catch (error) {
+        process.stderr.write(`${NAME}: ${failureText(error)}\n`)
+        return 1
+      }
     }
 
     case 'list': {
@@ -203,7 +228,7 @@ export async function runMarketplace(args: readonly string[]): Promise<number> {
         // ordinary registry content (a marketplace-relative source with no sha
         // pin), so an uncaught throw would greet the user with a stack trace.
         // Fetch and filesystem faults keep their own message and cause.
-        process.stderr.write(`${NAME}: ${error instanceof Error ? error.message : String(error)}\n`)
+        process.stderr.write(`${NAME}: ${failureText(error)}\n`)
         return 1
       }
       const { entry, synced } = result

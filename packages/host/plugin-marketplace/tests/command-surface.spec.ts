@@ -279,11 +279,14 @@ describe('marketplace add', () => {
     expect(loadState(statePath()).marketplaces).toEqual([{ name: 'local', url: 'registry.json' }])
   })
 
-  it('forwards a git@ spec to the fetch layer unchanged', async () => {
+  it('reports an ssh spec it cannot fetch instead of rejecting', async () => {
     // An ssh spec is neither a manifest url nor a GitHub repository the fetch
-    // layer can expand, so nothing is registered and nothing is written.
-    await expect(runMarketplace(['add', 'git@github.com:example/registry.git']))
-      .rejects.toThrow(/neither a manifest url/u)
+    // layer can expand, so nothing is registered and nothing is written. The
+    // failure is REPORTED the way install reports one: an escaping rejection
+    // reaches bin.ts's `process.exit(await …)` as an unhandled rejection rather
+    // than as the diagnostic this surface exists to print.
+    expect(await runMarketplace(['add', 'git@github.com:example/registry.git'])).toBe(1)
+    expect(stderr()).toContain('neither a manifest url')
     expect(existsSync(statePath())).toBe(false)
   })
 })

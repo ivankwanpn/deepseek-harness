@@ -18,7 +18,10 @@
  *    sync does not churn a hand-annotated file.
  *
  * WHO OWNS WHAT (the invariant that keeps this from having two sources of truth):
- *  - EXISTENCE and PROVENANCE of a managed row  -> the marketplace state file.
+ *  - EXISTENCE of a managed row  -> the marketplace state file.
+ *  - PROVENANCE of one           -> the `marketplace:` id namespace, because a row
+ *    whose plugin was uninstalled is named by neither the desired set nor a state
+ *    record that went with the plugin.
  *  - ENABLEMENT (`disabled`)                    -> the patch file, because a user
  *    can edit it by hand and the guide encourages exactly that. A sync reads the
  *    current `disabled` back before composing, so hand edits are never clobbered;
@@ -28,6 +31,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import * as yaml from 'js-yaml'
 import { entryListSchema, type PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import type { EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
+import { isManagedRowId } from './state.ts'
 
 /** One row the marketplace wants to exist in the patch layer. */
 export interface ManagedRow {
@@ -198,17 +202,11 @@ export function composePatchLayer(
   desired: readonly ManagedRow[],
 ): { patches: PatchOptions[]; conflicts: string[]; changed: boolean } {
   const conflicts: string[] = []
-  const managed = new Set(desired.map(row => row.id))
 
-  // Drop our own previously-inserted rows (idempotence), and detect foreign owners.
+  // Detect a row this package wants under an id something else already mounted.
   const existingById = new Map<string, RootRow>()
   for (const row of rootRows(parsed.patches)) existingById.set(row.id, row)
   const desiredById = new Map(desired.map(row => [row.id, row]))
-  for (const [id, row] of existingById) {
-    if (managed.has(id)) continue
-    // Not ours. Keep it.
-    void row
-  }
   for (const row of desired) {
     const existing = existingById.get(row.id)
     if (existing !== undefined && existing.name !== row.name) {
@@ -219,12 +217,14 @@ export function composePatchLayer(
   const kept: PatchOptions[] = []
   for (const patch of parsed.patches) {
     if (Array.isArray(patch.insert) && patch.id === undefined) {
-      // Preserve user rows; drop only ids we now own AND whose mount matches, so
-      // a conflicting foreign row survives untouched.
+      // Preserve user rows. A row this package inserted is dropped even when it
+      // is no longer desired — that is what removes the rows of an uninstalled
+      // plugin — while a foreign row that sits under our id and mount survives,
+      // because silently retargeting another owner's row breaks that owner.
       const survivors = patch.insert.filter((row): boolean => {
-        if (!hasId(row) || !managed.has(row.id)) return true
+        if (!hasId(row) || !isManagedRowId(row.id)) return true
         const want = desiredById.get(row.id)
-        return want === undefined || row.name !== want.name
+        return want !== undefined && row.name !== want.name
       })
       if (survivors.length > 0) kept.push({ ...patch, insert: survivors })
       continue

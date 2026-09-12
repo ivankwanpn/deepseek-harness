@@ -19,31 +19,14 @@
  * Enablement (`disabled`) is NOT decided here: the patch layer owns it (see
  * patch-layer.ts). These rows describe existence and shape only.
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { detectCapabilities } from './git.ts'
 import type { ManagedRow } from './patch-layer.ts'
-import { type InstalledCapability, type InstalledEntry } from './state.ts'
+import { mcpRowId, type InstalledEntry } from './state.ts'
 
 /** Module specifier that mounts one MCP server. */
 export const MCP_CLIENT_MODULE = '@deepseek-ai/dsh-mcp-client'
-
-/**
- * Whether a path is a directory, without throwing on absence.
- *
- * Unreadable counts as absent: a capability probe must never be the thing that
- * aborts an install, and every caller here is deciding whether to mention a
- * capability rather than whether to trust the file.
- *
- * @param path - the absolute path to probe.
- * @returns true only when the path exists and is a directory.
- */
-function isDirectory(path: string): boolean {
-  try {
-    return statSync(path).isDirectory()
-  } catch {
-    return false
-  }
-}
 
 /**
  * Where a materialization run reads its inputs from and writes skills to.
@@ -569,31 +552,15 @@ export function materializeEntry(
 ): MaterializeResult {
   const rows: ManagedRow[] = []
   const warnings: string[] = []
-  const onDisk: InstalledCapability[] = []
 
   const skills = materializeSkills(entry.installPath, options, entry.plugin, entry.skillIds ?? [], claimedSkills)
   for (const warning of skills.warnings) warnings.push(warning)
-  if (isDirectory(join(entry.installPath, 'skills'))) onDisk.push('skills')
-
-  // `commands/` is DETECTED but not materialized (see Known Limitations), so it
-  // contributes no row and no mount — but it must still be counted here. This
-  // list is compared against the capabilities recorded at install, and
-  // detectCapabilities reports commands, so omitting it made every plugin that
-  // ships one announce "capabilities changed on disk" on every single sync.
-  if (isDirectory(join(entry.installPath, 'commands'))) onDisk.push('commands')
 
   const servers = readPluginMcp(entry.installPath, warnings)
-  if (servers.length > 0) onDisk.push('mcp')
   for (const server of servers) {
     const serverName = sanitizeServerName(server.name, warnings)
     rows.push({
-      // Id keyed on the SERVER NAME, not on the plugin. `mcp-client` reserves
-      // `serverName` per scope and THROWS on a duplicate
-      // (mcp-client/src/index.ts:152-163), so two plugins shipping a server of
-      // the same name are a genuine conflict. Namespacing the id by plugin would
-      // hide that from sync and let both rows through, turning a clear
-      // "duplicate serverName" into an opaque loader failure at mount time.
-      id: `marketplace:mcp:${serverName}`,
+      id: mcpRowId(serverName),
       name: MCP_CLIENT_MODULE,
       config: {
         serverName,
@@ -615,7 +582,14 @@ export function materializeEntry(
   }
 
   const recorded = [...entry.capabilities].sort().join(',')
-  const actual = [...onDisk].sort().join(',')
+  // Read through the SAME probe the install recorded with, so the comparison is
+  // between one definition of a capability and the files on disk. A carrier
+  // whose contents mount nothing is still the carrier: deciding this from the
+  // usable servers instead announced a change that never happened on every sync
+  // for a `.mcp.json` declaring nothing mountable, and omitting `commands/`
+  // — detected but never materialized — did the same for every plugin shipping
+  // one.
+  const actual = detectCapabilities(entry.installPath).sort().join(',')
   if (recorded !== actual) {
     warnings.push(`capabilities changed on disk since install (recorded ${recorded || 'none'}, found ${actual || 'none'})`)
   }
