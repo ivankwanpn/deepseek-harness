@@ -51,6 +51,7 @@ export {
   candidateManifestUrls,
   fetchMarketplace,
   fetchMarketplaceFrom,
+  installSource,
   looksLikeManifestUrl,
   marketplaceRepoRoot,
   resolveLocalSource,

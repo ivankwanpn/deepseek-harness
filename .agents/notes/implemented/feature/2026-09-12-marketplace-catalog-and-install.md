@@ -32,11 +32,11 @@ catalog(state: MarketplaceState, options?: { fetch?: FetchOptions }): Promise<Ca
 |---|---|
 | `plugin`, `description`, `category`, `version`, `tags` | the parsed `MarketplaceEntry` |
 | `marketplace` | the name the supplying manifest declares |
-| `installable` | `isPinned(entry)` |
+| `installable` | `isPinned({ ...entry, source: installSource(entry, registration.url) })` |
 | `warnings` | the entry's own warnings, including the missing-pin one |
 | `installed` | `findInstalled(state, rowIdFor(plugin))` |
 
-`installable` is not a promise that an install succeeds. It applies the pin rule to the source as the manifest declares it, while an install re-resolves the source before it checks: a marketplace-relative `local` entry passes the pin rule here and becomes a git subdirectory carrying no `sha`, which the install then declines as unpinned.
+`installable` is not a promise that an install succeeds, because a marketplace can change between the read and the click. It applies the pin rule to the source an install would read — `installSource`, the resolution `installPlugin` also performs — so a row this read declines is exactly one an install accepts only with `allowUnpinned`. A marketplace-relative `local` entry is what makes that agreement load-bearing: install reads such a path as a git subdirectory of the marketplace repository, which carries no `sha`.
 
 A marketplace that cannot be read becomes one `MarketplaceFailure` carrying its registration name and the fetch layer's reason, and the loop continues. It does not abort the operation, so one unreachable registration cannot blank the list a reachable one supplies.
 
@@ -104,7 +104,7 @@ A read-only deployment draws no install control, matching the toggle and the uni
 
 - Browsing and installing happen in the panel that displays the installation: it lists what the registered marketplaces offer and installs from that list, and the CLI keeps both commands.
 - `dsh plugin marketplace search` keeps its output and gains containment: an unreadable registration is reported on stderr and the matches from the readable ones still print.
-- `marketplace.catalog` returns one row per entry across every registered marketplace, with `installable` false exactly for a source the pin rule declines as the manifest declares it and `installed` true exactly for a name with an install record; an install re-resolves the source and can refuse an entry this read accepted.
+- `marketplace.catalog` returns one row per entry across every registered marketplace, with `installable` false exactly for a source an install would read without a `sha` and `installed` true exactly for a name with an install record.
 - `marketplace.install` on a read-only deployment is refused with `marketplace/read-only` while `marketplace.catalog` still answers; an unlisted name is `marketplace/not-found`, and an unpinned entry without `allowUnpinned` is `marketplace/unpinned`.
 - With `allowUnpinned: true` the same call installs the entry and records the commit the ref named at that moment, so the install is one specific revision rather than a moving ref.
 - A successful install returns the status it produced, and that status lists the plugin as installed.

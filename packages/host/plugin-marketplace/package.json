@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-host-plugin-marketplace",
   "description": "Install and enable Claude-ecosystem marketplace plugins: manifest parsing, pinned fetching, and reconciliation into the user patch layer and the skills root",
-  "version": "0.1.5-rc.1",
+  "version": "0.1.5-rc.2",
   "publishConfig": {
     "access": "public"
   },

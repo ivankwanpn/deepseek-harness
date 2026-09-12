@@ -80,9 +80,9 @@ Two cleanup functions split by what they may delete. `removeMaterializedSkills` 
 
 ### The catalog read
 
-`src/catalog.ts` owns one read that both faces call. It visits every registered marketplace in stored order and returns one row per entry: the fields a list renders, the name the supplying manifest declares, whether this package's pin rule accepts the source, whether an installed record already exists, and the warnings the entry carried.
+`src/catalog.ts` owns one read that both faces call. It visits every registered marketplace in stored order and returns one row per entry: the fields a list renders, the name the supplying manifest declares, whether this package's pin rule accepts the source an install would read, whether an installed record already exists, and the warnings the entry carried.
 
-`installable` is that pin rule's verdict on the entry as the manifest declares it, and it is not a promise that an install succeeds: an install re-resolves the source first, so a marketplace-relative `local` entry this read accepts becomes a git subdirectory carrying no `sha` and is then refused as unpinned. The two verdicts disagree on exactly those entries.
+`installable` is that pin rule's verdict on the source an install would read, and it is not a promise that an install succeeds: a marketplace can change between the read and the click. The verdict and the refusal are decided from the same source, so a row this read declines is exactly one an install accepts only with `allowUnpinned` — which is the acknowledgement the panel asks for. A marketplace-relative `local` entry is what makes that agreement load-bearing: the path names content inside the marketplace repository, so an install reads it as a git subdirectory carrying no `sha`, and the entry is installable only through the acknowledgement.
 
 A registration that cannot be read becomes one reported failure carrying its registration name and the fetch layer's reason, and the loop continues to the next one. The CLI's `search` prints each failure to stderr and still prints the matches the readable registrations supplied, so silence never reads as "this marketplace lists nothing". An empty query lists everything, and a deployment with no registration resolves empty rather than refusing — `search` keeps its own separate refusal for that case.
 
@@ -116,7 +116,7 @@ None of those entries declares a `sha`, so the pin rule still declines them by d
 |---|---|
 | `src/parse.ts` | manifest parsing; strict, and reports an unpinned source |
 | `src/fetch.ts` | manifest fetch over the process-wide proxy policy |
-| `src/git.ts` | pinned fetch (`execFile`, argv only — never a shell) and capability detection |
+| `src/git.ts` | pinned fetch (`execFile`, argv only — never a shell), the copy that places content at its install path, and capability detection |
 | `src/state.ts` | the installed record |
 | `src/patch-layer.ts` | composing rows into the user patch layer; the only writer |
 | `src/materialize.ts` | capability → surface mapping: MCP normalization, flat skill materialization, and the ownership-aware cleanup |
@@ -172,6 +172,7 @@ Stable while the enabled server set is unchanged. Adding or removing a server ch
 - **`lspServers` from an entry is parsed but not mounted.** It is the one capability the manifest does declare inline, in 12 of 294 entries.
 - **No update or version-pinning policy.** Re-installing a plugin replaces it in place; a plugin pinned to a moving ref (`ref` without `sha`) is refused rather than resolved, which means such an entry cannot be installed at all.
 - **An unpinned entry needs an explicit opt-in.** 52 of the 294 official entries name their content relative to the marketplace repository and none of them carries a `sha`. The path is resolved against that repository, and the pin rule still declines the install unless `--allow-unpinned` is passed — which resolves the source's ref to the commit it names *now* and records that. The install is then one specific revision and can be held to it, but it is a snapshot of a ref, not a guarantee the next install matches. Entries pinned to a moving ref are unaffected either way.
+- **A local source is copied, not linked.** An entry whose source is a directory rather than a repository installs as a copy under the plugins root, which is what lets uninstall delete an install without ever deleting the directory the manifest named. Later edits to that directory do not reach the installed copy; re-installing is what picks them up.
 - **The manifest fetch is GitHub-shaped.** A repository url is resolved to its `raw/main` manifest; another host needs an explicit manifest url.
 - **A skill entry must be discoverable at the top of the plugin's `skills/` directory.** An entry that is a directory without `SKILL.md`, or a file that is not Markdown, is reported and skipped instead of copied: `skill-filesystem` reads exactly one level, so copying it into the discovery root would produce a file the model is never offered.
 - **The catalog is a snapshot.** A marketplace can change between the read and the click. `marketplace.install` re-resolves the entry from the registry at install time, so the recorded pin is the current one rather than what the panel displayed, and a name that disappeared between the two reads fails as `marketplace/not-found` instead of installing something else.

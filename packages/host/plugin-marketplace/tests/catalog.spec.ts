@@ -35,6 +35,8 @@ function serve(byUrl: Readonly<Record<string, unknown>>): void {
 
 const OFFICIAL = 'https://example.test/official/marketplace.json'
 const EXTRA = 'https://example.test/extra/marketplace.json'
+/** A manifest url whose host yields a repository root, so a local source can resolve. */
+const GITHUB = 'https://github.com/example/official/raw/main/.claude-plugin/marketplace.json'
 
 describe('catalog', () => {
   it('returns one row per entry, with installability decided here', async () => {
@@ -71,6 +73,29 @@ describe('catalog', () => {
         installed: false,
         warnings: ['git source has no sha pin'],
       },
+    ])
+  })
+
+  it('decides a local source from the subdir an install would read', async () => {
+    serve({
+      [GITHUB]: {
+        name: 'official',
+        plugins: [
+          { name: 'relative', source: './plugins/relative' },
+          { name: 'escaping', source: '../outside' },
+        ],
+      },
+    })
+    const result = await catalog(registrations(['official', GITHUB]))
+
+    // `./plugins/relative` names content INSIDE the marketplace repository, so an
+    // install re-expresses it as a git subdir carrying no sha. A verdict taken
+    // from the entry's own local form accepts it, and the panel then installs
+    // without the acknowledgement the Host's pin rule requires. A path that
+    // resolves to no repository root stays local, and stays installable.
+    expect(result.rows.map(row => [row.plugin, row.installable])).toEqual([
+      ['relative', false],
+      ['escaping', true],
     ])
   })
 

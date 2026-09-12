@@ -81,9 +81,9 @@ skill 与 loader 行的行为差异足够大，把它们合并起来在两个方
 
 ### catalog 读取
 
-`src/catalog.ts` 拥有一份两个面都会调用的读取。它按存储顺序走访每个已注册的 marketplace，并为每个条目回传一列：列表要渲染的栏位、提供该条目的 manifest 所声明的名称、本包的 pin 规则是否接受该来源、是否已存在安装记录，以及条目自带的警告。
+`src/catalog.ts` 拥有一份两个面都会调用的读取。它按存储顺序走访每个已注册的 marketplace，并为每个条目回传一列：列表要渲染的栏位、提供该条目的 manifest 所声明的名称、本包的 pin 规则是否接受安装会读取的那个来源、是否已存在安装记录，以及条目自带的警告。
 
-`installable` 是那条 pin 规则对 manifest 所声明的那个条目的判定，并不保证安装一定成功：安装会先重新解析来源，因此这次读取接受的、相对于 marketplace 的 `local` 条目会变成一个不带 `sha` 的 git 子目录，随后被以未钉住为由拒绝。两个判定恰好只在这类条目上不一致。
+`installable` 是那条 pin 规则对安装会读取的那个来源的判定，并不保证安装一定成功：marketplace 可能在这次读取与点击之间改变。判定与拒绝依据的是同一个来源，因此这次读取拒绝的一列，恰好就是只有带上 `allowUnpinned` 才能安装的那一列——也就是面板会请求的那次确认。相对于 marketplace 的 `local` 条目正是让这项一致性变得吃重的情形：该路径指的是 marketplace 仓库内部的内容，因此安装会把它读成一个不带 `sha` 的 git 子目录，该条目只能经由那次确认安装。
 
 读不动的注册变成一条携带其注册名与 fetch 层原因的失败，循环随即继续下一个。CLI 的 `search` 会把每条失败打印到 stderr，并照旧打印可读注册所提供的匹配结果，因此沉默永远不会被读成「这个 marketplace 什么都没列」。空查询列出全部；没有任何注册的部署则解析为空而不是拒绝——`search` 对那种情况保留自己单独的拒绝。
 
@@ -117,7 +117,7 @@ manifest 条目可以用相对于 marketplace 仓库的路径指名内容（`./p
 |---|---|
 | `src/parse.ts` | manifest 解析；严格，并会报告未钉住版本的来源 |
 | `src/fetch.ts` | 经进程级代理策略抓取 manifest |
-| `src/git.ts` | 钉住版本的抓取（`execFile`，只传 argv——绝不用 shell）与能力检测 |
+| `src/git.ts` | 钉住版本的抓取（`execFile`，只传 argv——绝不用 shell）、把内容放到其安装路径的那次复制，以及能力检测 |
 | `src/state.ts` | 已安装记录 |
 | `src/patch-layer.ts` | 把行组合进用户 patch 层；唯一的写入方 |
 | `src/materialize.ts` | 能力 → 落地面的映射：MCP 规范化、skill 平铺落地，以及带拥有关系的清理 |
@@ -177,6 +177,7 @@ manifest 条目可以用相对于 marketplace 仓库的路径指名内容（`./p
 - **条目里的 `lspServers` 会被解析，但不会被挂载。** 它是 manifest 唯一内联声明的能力，294 个条目中有 12 个。
 - **没有更新或版本钉住策略。** 重新安装插件会就地替换它；钉在会移动的 ref（有 `ref` 却没有 `sha`）上的插件会被拒绝而不是被解析，这意味着这类条目根本无法安装。
 - **未钉住的条目需要显式 opt-in。** 官方 294 个条目中有 52 个以相对于 marketplace 仓库的路径指名内容，且没有一个带 `sha`。该路径会对那个仓库解析，但除非传入 `--allow-unpinned`，pin 规则仍会拒绝安装；该旗标会把来源的 ref 解析成它*现在*指向的 commit 并记录下来。这次安装因此是一个具体的 revision，可以要求它始终保持在该 revision 上，但它是某个 ref 的快照，并不保证下一次安装仍然一致。钉在会移动的 ref 上的条目则无论如何都不受影响。
+- **local 来源是复制的，不是链接的。** 来源是一个目录而非仓库的条目，会以副本形式安装到 plugins 根目录下——正因如此，卸载才能删掉一次安装，而永远不删除 manifest 所指名的那个目录。此后对该目录的改动不会到达已安装的副本；重新安装才会把它们带进来。
 - **manifest 抓取是 GitHub 形状的。** repository url 会被解析成它的 `raw/main` manifest；其他主机则需要显式的 manifest url。
 - **skill 条目必须在插件的 `skills/` 目录顶层就能被发现。** 一个不含 `SKILL.md` 的目录，或一个非 Markdown 的文件，会被报告并跳过而不是复制：`skill-filesystem` 恰好只读一层，把它复制进发现根目录只会产出一个模型永远看不到的文件。
 - **catalog 是一份快照。** marketplace 可能在读取与点击之间改变。`marketplace.install` 会在安装时从注册重新解析该条目，因此记录的 pin 是当下的那个、而不是面板显示的；一个在两次读取之间消失的名称会以 `marketplace/not-found` 失败，而不是安装了别的东西。

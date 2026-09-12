@@ -11,7 +11,7 @@
  * its `source` fields later become git URLs and filesystem paths. So parsing is
  * strict (see parse.ts) and nothing here writes to disk or executes anything.
  */
-import { MarketplaceParseError, parseMarketplace, type Marketplace, type PluginSource } from './parse.ts'
+import { MarketplaceParseError, parseMarketplace, type Marketplace, type MarketplaceEntry, type PluginSource } from './parse.ts'
 
 /** Hard cap so a hostile or broken endpoint cannot exhaust memory. */
 export const MAX_MANIFEST_BYTES = 8 * 1024 * 1024
@@ -85,10 +85,10 @@ export async function fetchMarketplace(url: string, options: FetchOptions = {}):
   try {
     return parseMarketplace(raw)
   } catch (error) {
-    if (error instanceof MarketplaceParseError) {
-      throw new MarketplaceParseError(`${url}: ${error.message}`)
-    }
-    throw error
+    /* v8 ignore start -- parseMarketplace throws only MarketplaceParseError; this arm keeps an unexpected fault unrelabelled. */
+    if (!(error instanceof MarketplaceParseError)) throw error
+    /* v8 ignore stop */
+    throw new MarketplaceParseError(`${url}: ${error.message}`)
   }
 }
 
@@ -150,6 +150,7 @@ function cloneUrlFrom(manifestUrl: string): string | undefined {
   const github = /^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/(?:raw|blob|tree)\/.*)?$/i.exec(decoded)
   if (github) {
     const [, owner, repo] = github
+    /* v8 ignore else -- both groups are mandatory in the pattern above, so a match implies both are present. */
     if (owner !== undefined && repo !== undefined) return `https://github.com/${owner}/${repo}.git`
   }
   // A raw host is derived rather than stripped, so it reuses the same form as
@@ -157,6 +158,7 @@ function cloneUrlFrom(manifestUrl: string): string | undefined {
   const raw = /^https?:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+?)(?:\/.*)?$/i.exec(decoded)
   if (raw) {
     const [, owner, repo] = raw
+    /* v8 ignore else -- both groups are mandatory in the pattern above, so a match implies both are present. */
     if (owner !== undefined && repo !== undefined) return `https://github.com/${owner}/${repo}.git`
   }
   return undefined
@@ -211,6 +213,26 @@ export function resolveLocalSource(
 }
 
 /**
+ * The source an install reads for one entry.
+ *
+ * A marketplace-relative `local` source names content inside the marketplace
+ * repository, so install re-expresses it as a git subdir of that repository and
+ * invents no `sha`. The catalog and the installer both read the source through
+ * here, because deciding installability from the entry's own `local` form makes
+ * the pin rule accept a source the installer then refuses.
+ *
+ * @param entry - the parsed entry whose source is being resolved.
+ * @param marketplaceUrl - the registration's manifest url, the base for a relative path.
+ * @returns the source an install would read; the entry's own source when the
+ * path is not relative or the manifest url names no repository root.
+ */
+export function installSource(entry: MarketplaceEntry, marketplaceUrl: string): PluginSource {
+  if (entry.source.kind !== 'local') return entry.source
+  return resolveLocalSource(entry.source.path, marketplaceRepoRoot(marketplaceUrl), entry.source.ref)
+    ?? entry.source
+}
+
+/**
  * Fetch a marketplace from EITHER a manifest url or a repository url.
  *
  * A repo url is the form a user naturally types (`anthropics/claude-plugins-official`),
@@ -244,6 +266,7 @@ export async function fetchMarketplaceFrom(
     try {
       return { marketplace: await fetchMarketplace(candidate, options), manifestUrl: candidate }
     } catch (error) {
+      /* v8 ignore next -- a failed fetch rejects with an Error; the String arm defends this reporter against a non-Error throw. */
       attempts.push(`${candidate} → ${error instanceof Error ? error.message : String(error)}`)
     }
   }

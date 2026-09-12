@@ -154,8 +154,10 @@ function recordOwnership(
   // the entries that did not change by reference.
   const installed = state.installed.map((entry) => {
     const result = byPlugin.get(entry.plugin)
+    /* v8 ignore start -- sync materializes one result for every entry of this same state.installed, so the lookup always hits. */
     const rowIds = result?.rowIds ?? []
     const skillIds = result?.skillIds ?? []
+    /* v8 ignore stop */
     const unchanged = sameIds(entry.rowIds ?? [], rowIds) && sameIds(entry.skillIds ?? [], skillIds)
     return unchanged ? entry : { ...entry, rowIds, skillIds }
   })

@@ -18,7 +18,7 @@
  * @module @deepseek-ai/dsh-host-plugin-marketplace/catalog
  */
 
-import { fetchMarketplace, type FetchOptions } from './fetch.ts'
+import { fetchMarketplace, installSource, type FetchOptions } from './fetch.ts'
 import { isPinned, type MarketplaceEntry } from './parse.ts'
 import { findInstalled, rowIdFor, type MarketplaceState } from './state.ts'
 
@@ -36,7 +36,7 @@ export interface CatalogRow {
   version?: string
   /** Free-form tags the marketplace published. */
   tags: string[]
-  /** Whether our own pin rule accepts the source. Decided here, never by a caller. */
+  /** Whether our own pin rule accepts the source an install would read. Decided here, never by a caller. */
   installable: boolean
   /** Whether an installed record already exists for this name. */
   installed: boolean
@@ -98,7 +98,7 @@ export async function catalog(
         ...(entry.category !== undefined ? { category: entry.category } : {}),
         ...(entry.version !== undefined ? { version: entry.version } : {}),
         tags: [...entry.tags],
-        installable: isPinned(entry),
+        installable: isPinned({ ...entry, source: installSource(entry, registration.url) }),
         installed: findInstalled(state, rowIdFor(entry.name)) !== undefined,
         warnings: [...entry.warnings],
       })

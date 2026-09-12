@@ -22,6 +22,8 @@ const RESOLVED_SHA = 'c'.repeat(40)
 const URL = 'https://example.test/loose.git'
 const REF = 'v1.2.3'
 const MANIFEST = 'https://example.test/marketplace.json'
+/** A manifest url on a host that yields a repository root, so a relative source resolves. */
+const GITHUB_MANIFEST = 'https://github.com/example/registry/raw/main/.claude-plugin/marketplace.json'
 
 const resolveRefSha = vi.hoisted(() => vi.fn<(url: string, ref?: string) => Promise<string>>())
 
@@ -60,13 +62,13 @@ function statePath(): string {
 }
 
 /** Install options for one call against the scratch harness home. */
-function installOptions(): InstallOptions {
+function installOptions(manifest: string = MANIFEST): InstallOptions {
   const sync: SyncOptions = {
     patchLayerPath: join(scratch, 'cordis.patch.yml'),
     materialize: { harnessHome: scratch },
     statePath: statePath(),
   }
-  return { state: upsertMarketplace(emptyState(), 'test', MANIFEST), statePath: statePath(), sync }
+  return { state: upsertMarketplace(emptyState(), 'test', manifest), statePath: statePath(), sync }
 }
 
 /** Serve one marketplace manifest to every fetch. */
@@ -101,5 +103,33 @@ describe('the unpinned install opt-in', () => {
     })
     expect(existsSync(result.entry.installPath)).toBe(true)
     expect(loadState(statePath()).installed[0]).toMatchObject({ plugin: 'loose', sha: RESOLVED_SHA })
+  })
+
+  it('resolves a marketplace-relative local source against the marketplace repository', async () => {
+    serveMarketplace([{ name: 'relative', source: './plugins/relative' }])
+
+    // The path names content inside the marketplace repository, and a repository
+    // is not a revision: the source carries no sha, so the default arm refuses it
+    // exactly as it refuses a loose git url.
+    await expect(installPlugin('relative', installOptions(GITHUB_MANIFEST)))
+      .rejects.toMatchObject({ reason: 'unpinned' })
+    expect(resolveRefSha).not.toHaveBeenCalled()
+
+    resolveRefSha.mockResolvedValue(RESOLVED_SHA)
+    const result = await installPlugin('relative', {
+      ...installOptions(GITHUB_MANIFEST),
+      allowUnpinned: true,
+    })
+
+    // The declared ref is absent, so the resolution names HEAD; the record keeps
+    // the subdirectory and the repository root that resolve back to these bytes.
+    expect(resolveRefSha).toHaveBeenCalledWith('https://github.com/example/registry.git', 'HEAD')
+    expect(result.entry).toMatchObject({
+      plugin: 'relative',
+      sourceUrl: 'https://github.com/example/registry.git',
+      repoUrl: 'https://github.com/example/registry.git',
+      subdirectory: 'plugins/relative',
+      sha: RESOLVED_SHA,
+    })
   })
 })

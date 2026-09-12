@@ -214,6 +214,7 @@ export async function runMarketplace(args: readonly string[]): Promise<number> {
       // Rows are reported for THIS plugin only. `synced.rows` is the whole
       // composed layer, so filtering here keeps a second install from appearing
       // to have mounted the first plugin's rows.
+      /* v8 ignore next -- install syncs the plugin it just installed, so this lookup always finds it. */
       const own = synced.materialized.find(m => m.plugin === entry.plugin)?.result.rows ?? []
       if (own.length > 0) {
         process.stdout.write(`  mounted     ${String(own.length)} row(s)\n`)
