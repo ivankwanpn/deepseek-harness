@@ -93,7 +93,11 @@ describe('catalog', () => {
 
   it('contains one unreachable registration instead of failing the read', async () => {
     serve({ [OFFICIAL]: { name: 'official', plugins: [{ name: 'pinned', source: PINNED }] } })
-    const result = await catalog(registrations(['official', OFFICIAL], ['extra', EXTRA]))
+    // The unreachable registration comes FIRST. With `break` instead of
+    // `continue`, the readable registration after it would never be visited and
+    // `rows` would be empty, so this order is the assertion's whole
+    // discriminating power — the other order passes under either behaviour.
+    const result = await catalog(registrations(['extra', EXTRA], ['official', OFFICIAL]))
 
     expect(result.rows.map(row => row.plugin)).toEqual(['pinned'])
     expect(result.failed).toHaveLength(1)
