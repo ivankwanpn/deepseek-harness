@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/testing/2026-09-12-unit-suite-test-budget.md
-2026-09-12-unit-suite-test-budget.md: d5a2cc6b8c10c103aafd5ea24ff2901c7f9ba531
-2026-09-12-unit-suite-test-budget.zh.md: a7355b595db49477b7212d99e3c6762a825f0554
+2026-09-12-unit-suite-test-budget.md: 1e66808e99d9b203218eeb8169f2767206415c9b
+2026-09-12-unit-suite-test-budget.zh.md: 37355284e369c11b6eb2e00ab79af41692c033c2
