@@ -10,7 +10,7 @@ Client Remote 服务把每个已挂载的方法发布成 namespace service 对�
 
 由于 `@deepseek-ai/dsh-api-remotes` 把每一个被选中的贡献作为**一个整体装配**挂载，这一处拒绝就让整个浏览器启动失败。面板渲染出 `Failed to load plugins`，没有任何设置页能载入；失败的条目是那个装配，而不是 marketplace 这个 namespace。
 
-被保留的名称集合是**看不见的**。它由安装类恰巧由什么构成决定——`install`、`installDirect`、`installScoped`、`remove`、`has`、`empty`——所以一个方法名可能因为作者在任何类型里都看不到的理由被拒绝，而那条拒绝信息指出的冲突，调用方除了改名之外无从规避。
+被保留的名称集合是**看不见的**。它由安装类恰巧由什么构成决定——`install`、`installDirect`、`installScoped`、`remove`、`has`、`empty`——所以一个方法名可能因为作者在任何类型里都看不到的理由被拒绝，而那条拒绝信息指出的冲突，调用方除了改名之外无从规避。`marketplace/install` 是第一个撞上的已发布名称：它是整个仓库里**唯一**匹配这六个之一的 `@Remote` 方法名，所以这条路径从未被走过。
 
 ## 决策
 

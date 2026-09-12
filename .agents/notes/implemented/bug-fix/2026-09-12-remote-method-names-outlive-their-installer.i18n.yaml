@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-12-remote-method-names-outlive-their-installer.md
-2026-09-12-remote-method-names-outlive-their-installer.md: ef08fd68a828accdde1329278f38169efcb67dab
-2026-09-12-remote-method-names-outlive-their-installer.zh.md: 5f9ce150e0c54fe9ae69c7ad9e050c239c3d1cdb
+2026-09-12-remote-method-names-outlive-their-installer.md: e74354bc66710b0926b1598fa0126b023dae15b9
+2026-09-12-remote-method-names-outlive-their-installer.zh.md: 84836bd4e4298c72603ad8f9500027e8cc1c97fc

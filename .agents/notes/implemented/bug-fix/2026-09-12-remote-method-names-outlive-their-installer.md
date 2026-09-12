@@ -10,7 +10,7 @@ The Client Remote service published each mounted method as an accessor on the na
 
 Because `@deepseek-ai/dsh-api-remotes` mounts every selected contribution as one assembly, that single refusal failed the whole browser boot. The panel rendered `Failed to load plugins` and no settings page loaded at all; the failing entry was the assembly, not the marketplace namespace.
 
-The reserved set was invisible. It consisted of whatever the installing class happened to be built out of — `install`, `installDirect`, `installScoped`, `remove`, `has`, `empty` — so a method name could be refused for a reason its author could not see in any type, and the refusal named a collision the caller had no way to avoid short of renaming.
+The reserved set was invisible. It consisted of whatever the installing class happened to be built out of — `install`, `installDirect`, `installScoped`, `remove`, `has`, `empty` — so a method name could be refused for a reason its author could not see in any type, and the refusal named a collision the caller had no way to avoid short of renaming. `marketplace/install` was the first published name to collide: it is the only `@Remote` method in the repository that matches one of those six, so the path had never been exercised.
 
 ## Decision
 
