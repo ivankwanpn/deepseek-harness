@@ -76,7 +76,7 @@ describe('login flows in a real composition', () => {
 
 describe('request-level dynamic profiles', () => {
   // Real filesystem notifications can lag behind chokidar's stability window on busy hosts.
-  it('retains the last accepted profiles after an invalid external edit and accepts a repaired file', { timeout: 30_000 }, async () => {
+  it('retains the last accepted profiles after an invalid external edit and accepts a repaired file', async () => {
     const dir = await home()
     const path = join(dir, 'settings.yaml')
     await writeFile(path, JSON.stringify({ [NS]: { providers: { deepseek: {} } } }))

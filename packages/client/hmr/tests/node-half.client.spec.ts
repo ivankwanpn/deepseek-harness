@@ -113,7 +113,7 @@ describe('hmr node half', () => {
     // Nudge mtime past stat granularity so the poller sees a content signal.
     await new Promise(resolve => setTimeout(resolve, POLL_MS * 2))
     writeFileSync(bundle, 'v2-longer')
-    await vi.waitFor(() => { expect(clientModuleHost.rebuiltCalls).toContain('pkg-a') }, { timeout: 3_000 })
+    await vi.waitFor(() => { expect(clientModuleHost.rebuiltCalls).toContain('pkg-a') })
 
     clientModuleHost.rebuiltCalls.length = 0
     await new Promise(resolve => setTimeout(resolve, POLL_MS * 2))
@@ -122,7 +122,7 @@ describe('hmr node half', () => {
     expect(clientModuleHost.rebuiltCalls).toEqual([])
 
     writeFileSync(bundle, 'v3-even-longer')
-    await vi.waitFor(() => { expect(clientModuleHost.rebuiltCalls).toContain('pkg-a') }, { timeout: 3_000 })
+    await vi.waitFor(() => { expect(clientModuleHost.rebuiltCalls).toContain('pkg-a') })
 
     await fiber.dispose()
     expect(routes).toHaveLength(0)
@@ -149,7 +149,7 @@ describe('hmr node half', () => {
 
     await new Promise(resolve => setTimeout(resolve, POLL_MS * 2))
     writeFileSync(late, 'v2-longer')
-    await vi.waitFor(() => { expect(clientModuleHost.rebuiltCalls).toContain('pkg-late') }, { timeout: 3_000 })
+    await vi.waitFor(() => { expect(clientModuleHost.rebuiltCalls).toContain('pkg-late') })
 
     rows.delete('pkg-late')
     clientModuleHost.fireGraphChanged()
@@ -200,7 +200,7 @@ describe('hmr node half', () => {
       mtimeMs: baseline.mtimeMs,
       size: baseline.size,
     })
-    await vi.waitFor(() => { expect(clientModuleHost.rebuiltCalls).toEqual(['pkg-a']) }, { timeout: 3_000 })
+    await vi.waitFor(() => { expect(clientModuleHost.rebuiltCalls).toEqual(['pkg-a']) })
     await fiber.dispose()
   })
 
@@ -222,7 +222,7 @@ describe('hmr node half', () => {
 
     const fiber = await mount(clientModuleHost, fakeHttpServer([]))
 
-    await vi.waitFor(() => { expect(clientModuleHost.rebuiltCalls).toEqual(['pkg-a', 'pkg-a']) }, { timeout: 3_000 })
+    await vi.waitFor(() => { expect(clientModuleHost.rebuiltCalls).toEqual(['pkg-a', 'pkg-a']) })
     await fiber.dispose()
   })
 })

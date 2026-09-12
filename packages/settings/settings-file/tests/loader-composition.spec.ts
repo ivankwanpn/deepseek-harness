@@ -127,7 +127,7 @@ describe('settings-file real composition', () => {
     await writeFile(settingsPath, 'ui-theme:\n  theme: dark\n  fontSize: 20\n')
     await vi.waitFor(() => {
       expect(state.scope!.get()).toEqual({ theme: 'dark', fontSize: 20 })
-    }, { timeout: 5000 })
+    })
     expect(state.seen.at(-1)).toEqual({ theme: 'dark', fontSize: 20 })
   })
 

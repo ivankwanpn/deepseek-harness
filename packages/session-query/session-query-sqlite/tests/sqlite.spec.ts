@@ -1116,7 +1116,7 @@ describe('SQLite reconciliation and source lifecycle', () => {
       .rejects.toThrow(expectCode('SESSION_QUERY_SOURCE_CONFLICT'))
   })
 
-  it('preserves unchanged persisted generations while reconciling new, changed, and deleted rows', { timeout: 20_000 }, async () => {
+  it('preserves unchanged persisted generations while reconciling new, changed, and deleted rows', async () => {
     const path = await temporaryPath()
     const unchanged = header('unchanged')
     const changed = header('changed')
@@ -1305,7 +1305,7 @@ describe('SQLite schema, cancellation, and real persistence integration', () => 
     expect(ctx.sessionQuery).toBeUndefined()
   })
 
-  it('resets a recognized incompatible schema but refuses unknown or foreign tables', { timeout: 20_000 }, async () => {
+  it('resets a recognized incompatible schema but refuses unknown or foreign tables', async () => {
     const stalePath = await temporaryPath('stale.db')
     const staleOwner = await liveContext({ path: stalePath })
     await (staleOwner.sessionQuery as SqliteSessionQueryEngine).close()

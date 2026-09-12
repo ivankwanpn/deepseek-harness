@@ -23,7 +23,7 @@ afterEach(async () => {
 })
 
 describe('real Loader composition', () => {
-  it('loads the default Service export and an effect-scoped rule', { timeout: 60_000 }, async () => {
+  it('loads the default Service export and an effect-scoped rule', async () => {
     root = await mkdtemp(join(tmpdir(), 'dsh-webhook-loader-'))
     const configPath = join(root, 'cordis.yml')
     await writeFile(configPath, [

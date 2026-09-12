@@ -183,7 +183,7 @@ function drainManager(ctx: Context): Promise<void> {
 async function waitNoActivation(ctx: Context, childId: SessionId): Promise<void> {
   await vi.waitFor(() => {
     expect(ctx.agents.get(childId)).toBeUndefined()
-  }, { timeout: 5_000 })
+  })
 }
 
 /** Wait until the settlement watcher has checked the child's current idle state. */
@@ -893,7 +893,7 @@ describe('direct-child Queue residency routing', () => {
     await vi.waitFor(() => {
       expect(child.status).toBe('idle')
       expect(ctx.agents.get(started.childId)).toBe(child)
-    }, { timeout: 5_000 })
+    })
     // Waiting retains the handle: the same Agent is still live.
     expect(ctx.agents.get(started.childId)).toBe(child)
 
@@ -1107,7 +1107,7 @@ describe('continuable child ownership', () => {
     await vi.waitFor(() => {
       expect(child.status).toBe('idle')
       expect(ctx.agents.get(started.childId)).toBe(child)
-    }, { timeout: 5_000 })
+    })
     // Child-first: the parent handle is retained while the grandchild is live.
     expect(ctx.agents.get(started.childId)).toBe(child)
     expect(ctx.agents.get(grandchild.childId)).toBeDefined()
@@ -1372,7 +1372,7 @@ describe('continuable durability and teardown', () => {
     await waitNoActivation(ctx, started.childId)
     await vi.waitFor(() => {
       expect(warnings.some(warning => warning.includes('normal settlement cleanup failed'))).toBe(true)
-    }, { timeout: 5_000 })
+    })
   })
 
   it('disposes every live Activation forest child-first on manager teardown', async () => {

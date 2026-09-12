@@ -403,7 +403,7 @@ describe('boot with user patches', () => {
     }
   })
 
-  it('watches add, failure, recovery, and removal through transactional HMR', { timeout: 20_000 }, async () => {
+  it('watches add, failure, recovery, and removal through transactional HMR', async () => {
     const dir = tmp()
     const userDir = tmp()
     const filename = join(userDir, PROFILE_PATCH_FILENAME)

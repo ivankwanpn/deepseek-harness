@@ -195,12 +195,12 @@ describe('SessionProjectionCache write policy', () => {
     // stored row is still the creation-time cut (no marks folded).
     await vi.waitFor(async () => {
       expect((await storedRows(root, session.id))?.['cache-test/marks']?.seq).toBe(-1)
-    }, { timeout: 5_000 })
+    })
     const end = endTurn(session)
     await vi.waitFor(async () => {
       expect((await storedRows(root, session.id))?.['cache-test/marks'])
         .toEqual({ ver: 1, seq: end.seq, val: { marks: ['a'] } })
-    }, { timeout: 5_000 })
+    })
   })
 
   it('writes a checkpoint at session creation, capturing the seed-derived cut', async () => {
@@ -214,7 +214,7 @@ describe('SessionProjectionCache write policy', () => {
     await vi.waitFor(async () => {
       expect((await storedRows(root, session.id))?.['cache-test/marks']?.val)
         .toEqual({ marks: ['seed'] })
-    }, { timeout: 5_000 })
+    })
   })
 
   it('writes at session disposal (detach, the live-to-cold moment)', async () => {
@@ -230,7 +230,7 @@ describe('SessionProjectionCache write policy', () => {
     const detached = session
     await vi.waitFor(async () => {
       expect((await storedRows(root, detached.id))?.['cache-test/marks']?.val).toEqual({ marks: ['live'] })
-    }, { timeout: 5_000 })
+    })
   })
 
   it('flushes when the in-turn event count reaches the configured threshold', async () => {
@@ -241,11 +241,11 @@ describe('SessionProjectionCache write policy', () => {
     await vi.waitFor(async () => {
       expect((await storedRows(root, session.id))?.['cache-test/marks'])
         .toEqual({ ver: 1, seq: -1, val: null }) // still the creation cut
-    }, { timeout: 5_000 })
+    })
     mark(session, ['3'])
     await vi.waitFor(async () => {
       expect((await storedRows(root, session.id))?.['cache-test/marks']?.val).toEqual({ marks: ['3'] })
-    }, { timeout: 5_000 })
+    })
   })
 
   it('flushes on the configured interval when the count threshold is not reached', async () => {
@@ -319,17 +319,17 @@ describe('SessionProjectionCache write policy', () => {
     // property under test is that a failed write leaves no partial row.
     await vi.waitFor(() => {
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('turn/end write for "fail-soft" failed'))
-    }, { timeout: 5_000 })
+    })
     await vi.waitFor(async () => {
       expect(await storedRows(root, session.id)).toBeUndefined()
-    }, { timeout: 5_000 })
+    })
     // Self-heal: once the blocker clears, the next mandatory point writes.
     await rm(recordPath(root, session.id), { recursive: true })
     mark(session, ['y'])
     endTurn(session)
     await vi.waitFor(async () => {
       expect((await storedRows(root, session.id))?.['cache-test/marks']?.val).toEqual({ marks: ['y'] })
-    }, { timeout: 5_000 })
+    })
   })
 })
 
@@ -727,6 +727,6 @@ describe('SessionProjectionCache cold-read seeding', () => {
     // assuming a fixed settle window (slow runners exceed it).
     await vi.waitFor(() => {
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('cold-read write-back for "cold-fail" failed'))
-    }, { timeout: 5_000 })
+    })
   })
 })

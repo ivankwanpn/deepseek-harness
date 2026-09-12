@@ -768,7 +768,7 @@ describe('raw Markdown projection of the published manifest', () => {
     }
   })
 
-  it('resolves every relative link inside the emitted tree', { timeout: 60_000 }, () => {
+  it('resolves every relative link inside the emitted tree', () => {
     // Raw pages are read outside the site, so a relative target that only the
     // rendered site serves would strand every agent following it.
     const broken: string[] = []

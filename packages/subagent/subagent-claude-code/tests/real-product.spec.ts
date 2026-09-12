@@ -286,9 +286,7 @@ function startRequest(
   })
 }
 
-describe('real Claude Agent SDK 0.3.263 and its distributed Claude Code 2.1.263 fixture', {
-  timeout: 60_000,
-}, () => {
+describe('real Claude Agent SDK 0.3.263 and its distributed Claude Code 2.1.263 fixture', () => {
   it('inherits host settings and sends the exact task and fake key to local Messages', async () => {
     const sentinel = 'REAL_CLAUDE_CODE_SENTINEL_2_1_237'
     const task = 'Return the fixture sentinel exactly.'
@@ -492,7 +490,7 @@ describe('real Claude Agent SDK 0.3.263 and its distributed Claude Code 2.1.263 
       expect(observedSdkMessages.some(message =>
         message.type === 'system'
         && message.subtype === 'permission_denied')).toBe(true)
-    }, { timeout: 30_000 })
+    })
     expect(existsSync(target)).toBe(false)
     harness.handles[0]!.terminate()
     const outcome = await harness.handles[0]!.done

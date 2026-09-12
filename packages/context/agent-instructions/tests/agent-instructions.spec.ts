@@ -261,7 +261,7 @@ async function workspaceContextOf(agent: Agent): Promise<UserMessage> {
       message.source.kind === 'agent-instructions')
     expect(context).toBeDefined()
     return context!
-  }, { timeout: 10_000 })
+  })
 }
 
 async function syncWorkspaceContext(ctx: Context, agent: Agent): Promise<void> {
@@ -4348,7 +4348,7 @@ describe('dynamic nested workspace context injection', () => {
     }
   })
 
-  it('warns when an asynchronous file-result projection fails', { timeout: 20_000 }, async () => {
+  it('warns when an asynchronous file-result projection fails', async () => {
     const ctx = new Context()
     try {
       await ctx.plugin(RecordingFileSystem)
@@ -4372,7 +4372,7 @@ describe('dynamic nested workspace context injection', () => {
 
       await vi.waitFor(() => {
         expect(warn).toHaveBeenCalledWith('workspace instruction refresh failed: %o', failure)
-      }, { timeout: 10_000 })
+      })
     } finally {
       await ctx.fiber.dispose()
     }

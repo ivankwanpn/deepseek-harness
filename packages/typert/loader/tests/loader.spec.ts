@@ -240,7 +240,7 @@ describe('typert loader', () => {
     // Contributor import settles after Loader's own await boundary.
     await vi.waitFor(() => {
       expect(ctx.typert.get('@fixture/late#Late')).toBeDefined()
-    }, { timeout: 10_000 })
+    })
   })
 
   it('drops an in-flight manifest when the loader is disposed before import settles', LOADER_TEST_TIMEOUT, async () => {
@@ -401,7 +401,7 @@ describe('typert loader', () => {
     // The failing contributor's error is reported on the post-await flush.
     await vi.waitFor(() => {
       expect(logged).toHaveBeenCalledWith(expect.objectContaining({ message: 'register failed' }))
-    }, { timeout: 10_000 })
+    })
     expect(ctx.typert.getPackage('@fixture/steady-failure')).toBeUndefined()
   })
 })

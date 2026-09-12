@@ -103,7 +103,7 @@ afterEach(() => {
   for (const root of temporaryRoots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
-describe('WorkspaceAnalyzer', { timeout: 60_000 }, () => {
+describe('WorkspaceAnalyzer', () => {
   it('builds independent face models with an explicit cross-face type graph', () => {
     const model = new WorkspaceAnalyzer({ root: fixtureRoot }).analyze()
 
@@ -1115,6 +1115,8 @@ describe('WorkspaceAnalyzer', { timeout: 60_000 }, () => {
     ])
   })
 
+  // Three minutes, above the lane's budget: the case copies a fixture workspace
+  // and resolves export forms across every package in it.
   it('accepts package export forms while skipping artifact-only rows and unexported packages', { timeout: 180_000 }, () => {
     const root = copyFixture('typert-export-forms-')
     const hostRoot = join(root, 'packages/host')
@@ -1259,7 +1261,7 @@ describe('WorkspaceAnalyzer', { timeout: 60_000 }, () => {
   })
 })
 
-describe('TypeGraphRenderer', { timeout: 60_000 }, () => {
+describe('TypeGraphRenderer', () => {
   it('retains every source-authored SyntaxZoo property type through rendering', () => {
     const host = new WorkspaceAnalyzer({ root: fixtureRoot }).analyze().faces
       .find(face => face.face === 'host')
@@ -1352,7 +1354,7 @@ describe('TypeGraphRenderer', { timeout: 60_000 }, () => {
   })
 })
 
-describe('WorkspaceTypertGenerator', { timeout: 60_000 }, () => {
+describe('WorkspaceTypertGenerator', () => {
   it('emits host and client faces through their exact root-level public artifacts', () => {
     const artifacts = new WorkspaceTypertGenerator(fixtureRoot).generate()
     expect(artifacts.map(artifact => ({ package: artifact.package, face: artifact.face }))).toEqual([
@@ -1590,7 +1592,7 @@ function addExplicitServicePackage(root: string, annotation: string, withProtoco
   writeFileSync(aggregatePath, `${JSON.stringify(aggregate, null, 2)}\n`)
 }
 
-describe('FaceModelEmitter', { timeout: 60_000 }, () => {
+describe('FaceModelEmitter', () => {
   it('emits runnable Zod JavaScript, precise declarations, and runtime package metadata', async () => {
     const model = new WorkspaceAnalyzer({ root: fixtureRoot }).analyze()
     const host = model.faces.find(face => face.face === 'host')

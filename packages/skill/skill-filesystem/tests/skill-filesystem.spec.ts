@@ -637,7 +637,7 @@ describe('FileSystemSkillProvider', () => {
     expect(fs.readTextSignals).toEqual([controller.signal])
   })
 
-  it('refreshes additions, metadata changes, deletions, and a recreated missing root', { timeout: 20000 }, async () => {
+  it('refreshes additions, metadata changes, deletions, and a recreated missing root', async () => {
     const home = await tempDir('skill-watch-home')
     const agentsRoot = join(home, '.agents/skills')
     const ctx = new Context()
@@ -815,7 +815,7 @@ describe('FileSystemSkillProvider', () => {
     disposeProvider()
   })
 
-  it('refreshes frontmatter through a followed skill symlink', { timeout: 10000 }, async () => {
+  it('refreshes frontmatter through a followed skill symlink', async () => {
     const home = await tempDir('skill-watch-symlink-home')
     const external = await tempDir('skill-watch-symlink-external')
     const root = join(home, '.dsh/skills')

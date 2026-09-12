@@ -296,6 +296,10 @@ describe('Typert Remote streams', () => {
     })).rejects.toMatchObject({ code: 'gateway/signature-invalid' } satisfies Partial<TypertGatewayError>)
   })
 
+  // The configured heartbeat is 20 ms, so this budget is the subject rather than
+  // a settling allowance: one second is what proves the interval reached the
+  // socket, and the lane's 90 s would let a ping that never arrives pass as a
+  // slow host.
   it('uses the configured WebSocket heartbeat interval', { timeout: 1_000 }, async () => {
     const { ctx } = await setup(true, { websocketHeartbeatIntervalMs: 20 })
     const socket = new WebSocket(`ws://127.0.0.1:${String(ctx.webServer.port)}/api/remote.mux`, {

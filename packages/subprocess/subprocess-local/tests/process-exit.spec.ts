@@ -15,6 +15,9 @@ interface TreeState { root: number; descendant: number }
 
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url))
 const hostScript = fileURLToPath(new URL('./fixtures/process-exit-host.ts', import.meta.url))
+// The scenario deadline is this suite's subject, so the case budget is derived
+// from it rather than inherited from the lane: a case must outlive the deadline
+// it waits on, or the harness reports first and hides the product's own verdict.
 const scenarioTimeoutMs = process.platform === 'win32' ? 60_000 : 30_000
 const testTimeoutMs = scenarioTimeoutMs + 15_000
 
@@ -52,7 +55,7 @@ async function captureIdentities(inspector: ProcessInspector, state: TreeState):
 async function waitForGone(state: TreeState): Promise<void> {
   await Promise.all([state.root, state.descendant].map(pid => vi.waitFor(() => {
     if (processExists(pid)) throw new Error(`managed pid ${pid} is still alive`)
-  }, { interval: 25, timeout: 10_000 })))
+  }, { interval: 25, timeout: scenarioTimeoutMs })))
 }
 
 function cleanupTree(state: TreeState | undefined, identities: ProcessIdentity[]): void {

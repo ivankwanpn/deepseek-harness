@@ -95,6 +95,27 @@ export function coverageTestTimeoutMs(raw: string | undefined): number | undefin
 }
 
 /**
+ * The per-test budget both coverage lanes export, and the fallback for a run
+ * that declares none of its own.
+ */
+export const LANE_TEST_BUDGET_FALLBACK_MS = 90_000
+
+/**
+ * Resolve the unit lane's per-test budget in milliseconds.
+ *
+ * The Vitest projects, the lane's `vi.waitFor` default, and the coverage gates'
+ * CLI arguments all resolve the budget here, so one run cannot grant one number
+ * to a case and a different one to the waits inside it. A lane that exports
+ * `DSH_COVERAGE_TEST_TIMEOUT_MS` still governs every one of them.
+ * @param env - the environment carrying the optional override.
+ * @returns the per-test budget in milliseconds.
+ * @throws When the override is set but is not a positive base-10 integer.
+ */
+export function laneTestBudgetMs(env: NodeJS.ProcessEnv = process.env): number {
+  return coverageTestTimeoutMs(env[COVERAGE_TEST_TIMEOUT_ENV]) ?? LANE_TEST_BUDGET_FALLBACK_MS
+}
+
+/**
  * Resolve the Vitest timeout arguments used by coverage partitions.
  * `--hookTimeout` travels with the test budget because setup and teardown pay
  * the same host contention the raised test budget accounts for: fixtures that
@@ -103,10 +124,10 @@ export function coverageTestTimeoutMs(raw: string | undefined): number | undefin
  * suite whose cases all passed.
  *
  * `--expect.poll.timeout` deliberately does not travel with them. Vitest 4
- * parses the flag but every `expect.poll` and `vi.waitFor` reads the budget from
- * the resolved config instead, so the argument granted nothing while reading as
- * though it did; `vitest.config.ts` declares `expect.poll.timeout` from the same
- * budget, which is what actually reaches those assertions.
+ * parses the flag but resolves poll budgets from the loaded config, so the
+ * argument granted nothing while reading as though it did; `vitest.config.ts`
+ * declares `expect.poll.timeout` from the same budget, and the lane's setup file
+ * does the same for `vi.waitFor`, which reads no configuration at all.
  * @param raw - the configured millisecond budget, or undefined to keep Vitest's defaults.
  * @returns the Vitest arguments applying that budget, empty when unset.
  */

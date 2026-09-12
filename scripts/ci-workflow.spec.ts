@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import * as yaml from 'js-yaml'
 import { describe, expect, it } from 'vitest'
+import { LANE_TEST_BUDGET_FALLBACK_MS } from './coverage-partitions.ts'
 
 const root = resolve(import.meta.dirname, '..')
 const runnerPrivatePnpmDestination = /^\$\{\{ runner\.temp \}\}\/setup-pnpm-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}$/
@@ -581,15 +582,15 @@ describe('CI workflow', () => {
   it('declares the coverage lane test budget as the Vitest project default', () => {
     const config = readFileSync(resolve(root, 'vitest.config.ts'), 'utf8')
     const workflow = readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8')
-    const fallback = /coverageTestTimeoutMs\(process\.env\[COVERAGE_TEST_TIMEOUT_ENV\]\) \?\? ([\d_]+)/.exec(config)?.[1]
     const laneBudgets = new Set([...workflow.matchAll(/DSH_COVERAGE_TEST_TIMEOUT_MS: '(\d+)'/g)].map(match => Number(match[1])))
 
     // The lane budget must reach the projects through the config. Vitest accepts
-    // --expect.poll.timeout but every expect.poll and vi.waitFor reads the poll
-    // budget from the loaded config, so a run with no gate in front of it kept
-    // Vitest's 1 s poll default and 5 s case default no matter what CI exported.
-    expect(fallback).toBeDefined()
-    expect(laneBudgets).toEqual(new Set([Number(fallback!.replaceAll('_', ''))]))
+    // --expect.poll.timeout but resolves poll budgets from the loaded config, and
+    // vi.waitFor reads none at all, so a run with no gate in front of it kept
+    // Vitest's 1 s poll and wait default and its 5 s case default no matter what
+    // CI exported.
+    expect(config).toContain('laneTestBudgetMs()')
+    expect(laneBudgets).toEqual(new Set([LANE_TEST_BUDGET_FALLBACK_MS]))
     expect(config.match(/testTimeout: LANE_BUDGET_MS/g)).toHaveLength(2)
     expect(config.match(/hookTimeout: LANE_BUDGET_MS/g)).toHaveLength(2)
     expect(config.match(/expect: \{ poll: \{ timeout: LANE_BUDGET_MS \} \}/g)).toHaveLength(2)

@@ -1244,7 +1244,7 @@ describe('dsh-tool-subagent continuable background mode', () => {
 
     await vi.waitFor(() => {
       expect(ctx.agents.get(SessionId(childId!))).toBeUndefined()
-    }, { timeout: 5_000 })
+    })
     // The child id names a durable session carrying its continuation descriptor.
     const loaded = await loadStoredSession(ctx.sessionPersistence, SessionId(childId!))
     expect(loaded.events.some(event => event.type === 'subagent/descriptor')).toBe(true)
@@ -1331,7 +1331,7 @@ describe('dsh-tool-subagent continuable background mode', () => {
     })
     await vi.waitFor(() => {
       expect(ctx.agents.get(survivingChildId!)).toBeUndefined()
-    }, { timeout: 5_000 })
+    })
     const loaded = await loadStoredSession(ctx.sessionPersistence, survivingChildId!)
     expect(loaded.events.some(event => event.type === 'subagent/descriptor')).toBe(true)
     expect(loaded.events.some(event => event.type === 'assistant/message')).toBe(true)

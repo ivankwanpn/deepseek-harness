@@ -97,7 +97,7 @@ function callTool(
 async function waitNoActivation(ctx: Context, childId: SessionId): Promise<void> {
   await vi.waitFor(() => {
     expect(ctx.agents.get(childId)).toBeUndefined()
-  }, { timeout: 5_000 })
+  })
 }
 
 describe('dsh-tool-subagent-control/list-agents', () => {
@@ -291,7 +291,7 @@ describe('dsh-tool-subagent-control/list-agents', () => {
     releaseChild.resolve(undefined)
     await vi.waitFor(() => {
       expect(ctx.agents.get(started.childId)?.status).toBe('idle')
-    }, { timeout: 5_000 })
+    })
 
     const result = await callTool(ctx, 'list_agents', { scope: 'descendants' }, parent)
     expect(result.isError).toBe(false)

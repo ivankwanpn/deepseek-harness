@@ -140,7 +140,7 @@ describe('StreamingHighlightSession', () => {
       const lines = session.update('print(1)', 'python')
       expect(lines?.[0]?.map(span => span.text).join('')).toBe('print(1)')
       expect(lines?.[0]?.length).toBeGreaterThan(1)
-    }, { timeout: 5_000 })
+    })
   })
 
   it('a trailing newline renders as a real empty last line (settled-arm parity)', () => {
@@ -185,7 +185,7 @@ describe('StreamingHighlightSession', () => {
     const snippet = '# Heading\n**bold words** and *italic* and a [link with spaces](https://x.example) tail'
     await vi.waitFor(() => {
       expect(new StreamingHighlightSession().update('# x', 'md')).toBeDefined()
-    }, { timeout: 5_000 })
+    })
     const session = new StreamingHighlightSession()
     for (let end = 1; end <= snippet.length; end++) {
       const slice = snippet.slice(0, end)
@@ -212,7 +212,7 @@ describe('CodeBlock streaming arm', () => {
     // md is a lazy grammar: wait for it so both arms highlight.
     await vi.waitFor(() => {
       expect(new StreamingHighlightSession().update('# x', 'md')).toBeDefined()
-    }, { timeout: 5_000 })
+    })
     const md = '# Heading\n**bold words** and *italic* and a [link with spaces](https://x.example) tail\n'
     const mdStreamed = render(<CodeBlock code={md} lang="md" streaming {...LABELS} />)
     const mdSettled = render(<CodeBlock code={md} lang="md" {...LABELS} />)
@@ -272,7 +272,7 @@ describe('CodeBlock streaming arm', () => {
     expect(line).not.toBeNull()
     const loader = new StreamingHighlightSession()
     expect(loader.update('puts 1', 'ruby')).toBeUndefined()
-    await vi.waitFor(() => { expect(loader.update('puts 1', 'ruby')).toBeDefined() }, { timeout: 5_000 })
+    await vi.waitFor(() => { expect(loader.update('puts 1', 'ruby')).toBeDefined() })
     expect(view.container.querySelector('pre.shiki .line')).toBe(line)
   })
 
