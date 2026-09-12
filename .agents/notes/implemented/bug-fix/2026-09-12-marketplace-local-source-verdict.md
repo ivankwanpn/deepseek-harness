@@ -32,6 +32,7 @@ Both faces take the source from `installSource(entry, marketplaceUrl)` in `src/f
 - `installable` now means "installs without an acknowledgement" rather than "the pin rule accepts the manifest's own spelling of the source". It remains a snapshot: a marketplace can change between the read and the click.
 - `src/fetch.ts` exports `installSource`. The resolution has one home, so a later change to either face cannot reintroduce the disagreement.
 - [The marketplace catalog and install note](../feature/2026-09-12-marketplace-catalog-and-install.md) documented the disagreement as shipped behaviour; its `installable` row, its prose and its verification list now state the agreement.
+- A local source that resolves against no repository stayed installable by the pin rule and still could not be fetched; [the install now copies it](2026-09-12-local-source-install-never-copied.md).
 
 ## Testing
 

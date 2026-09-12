@@ -32,6 +32,7 @@ marketplace 条目可以把它的内容声明为相对于 marketplace 仓库的�
 - `installable` 现在意味着「无需确认即可安装」，而不是「pin 规则接受 manifest 自己对来源的写法」。它仍是快照：marketplace 可能在读取与点击之间改变。
 - `src/fetch.ts` 导出 `installSource`。解析只有一处归属，因此日后改动任一面都无法重新引入这项不一致。
 - [marketplace 目录与安装那份笔记](../feature/2026-09-12-marketplace-catalog-and-install.zh.md)曾把这项不一致写成已交付的行为；它的 `installable` 栏、正文与验证清单现在陈述的是一致。
+- 解析不出仓库的 local 来源在 pin 规则下仍可安装，而它依然抓不下来；[现在安装会复制它](2026-09-12-local-source-install-never-copied.zh.md)。
 
 ## 测试
 

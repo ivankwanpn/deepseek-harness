@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-12-marketplace-local-source-verdict.md
-2026-09-12-marketplace-local-source-verdict.md: 76fa5013dd66ab8265d13c3c70cc0327ac435787
-2026-09-12-marketplace-local-source-verdict.zh.md: ed8f39bf5c1df9b38dba9545774f676a8792ac2f
+2026-09-12-marketplace-local-source-verdict.md: df0e2377c73c967d51ecd443e2d13d864a488094
+2026-09-12-marketplace-local-source-verdict.zh.md: 03a32bbbeea87c6b68d1d875ac02e731dfeb1ac9

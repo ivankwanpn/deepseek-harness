@@ -267,6 +267,34 @@ describe('what an install reports about its content', () => {
     expect(result.entry.subdirectory).toBeUndefined()
     expect(loadState(statePath()).installed[0]?.sha).toBeUndefined()
   })
+
+  it('installs a local source by copying it, so the install owns its bytes', async () => {
+    // The directory is the user's own. The install takes a copy under the
+    // plugins root rather than referencing the directory in place, because an
+    // uninstall deletes installPath — and with nothing copying into staging the
+    // install died here with a raw ENOENT naming its own temporary path.
+    const source = join(scratch, 'checked-out-plugin')
+    mkdirSync(join(source, 'commands'), { recursive: true })
+    writeFileSync(join(source, 'commands', 'hello.md'), '---\nname: hello\n---\n\nBody.\n', 'utf8')
+    serveMarketplace({ name: 'test', plugins: [{ name: 'localinstall', source }] })
+
+    const result = await installPlugin('localinstall', installOptions())
+
+    expect(result.entry).toMatchObject({ sourceUrl: source, capabilities: ['commands'] })
+    // Under the plugins root is exactly what makes the uninstall below safe.
+    expect(result.entry.installPath.startsWith(pluginsRoot())).toBe(true)
+    expect(existsSync(join(result.entry.installPath, 'commands', 'hello.md'))).toBe(true)
+    expect(existsSync(join(source, 'commands', 'hello.md'))).toBe(true)
+
+    const { removed } = uninstallPlugin(loadState(statePath()), 'localinstall', {
+      statePath: statePath(),
+      sync: syncOptions(),
+    })
+
+    expect(removed).toBe(true)
+    expect(existsSync(result.entry.installPath)).toBe(false)
+    expect(existsSync(join(source, 'commands', 'hello.md'))).toBe(true)
+  })
 })
 
 describe('uninstalling a record written before skillIds existed', () => {

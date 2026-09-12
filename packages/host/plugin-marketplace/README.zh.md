@@ -117,7 +117,7 @@ manifest 条目可以用相对于 marketplace 仓库的路径指名内容（`./p
 |---|---|
 | `src/parse.ts` | manifest 解析；严格，并会报告未钉住版本的来源 |
 | `src/fetch.ts` | 经进程级代理策略抓取 manifest |
-| `src/git.ts` | 钉住版本的抓取（`execFile`，只传 argv——绝不用 shell）与能力检测 |
+| `src/git.ts` | 钉住版本的抓取（`execFile`，只传 argv——绝不用 shell）、把内容放到其安装路径的那次复制，以及能力检测 |
 | `src/state.ts` | 已安装记录 |
 | `src/patch-layer.ts` | 把行组合进用户 patch 层；唯一的写入方 |
 | `src/materialize.ts` | 能力 → 落地面的映射：MCP 规范化、skill 平铺落地，以及带拥有关系的清理 |
@@ -177,6 +177,7 @@ manifest 条目可以用相对于 marketplace 仓库的路径指名内容（`./p
 - **条目里的 `lspServers` 会被解析，但不会被挂载。** 它是 manifest 唯一内联声明的能力，294 个条目中有 12 个。
 - **没有更新或版本钉住策略。** 重新安装插件会就地替换它；钉在会移动的 ref（有 `ref` 却没有 `sha`）上的插件会被拒绝而不是被解析，这意味着这类条目根本无法安装。
 - **未钉住的条目需要显式 opt-in。** 官方 294 个条目中有 52 个以相对于 marketplace 仓库的路径指名内容，且没有一个带 `sha`。该路径会对那个仓库解析，但除非传入 `--allow-unpinned`，pin 规则仍会拒绝安装；该旗标会把来源的 ref 解析成它*现在*指向的 commit 并记录下来。这次安装因此是一个具体的 revision，可以要求它始终保持在该 revision 上，但它是某个 ref 的快照，并不保证下一次安装仍然一致。钉在会移动的 ref 上的条目则无论如何都不受影响。
+- **local 来源是复制的，不是链接的。** 来源是一个目录而非仓库的条目，会以副本形式安装到 plugins 根目录下——正因如此，卸载才能删掉一次安装，而永远不删除 manifest 所指名的那个目录。此后对该目录的改动不会到达已安装的副本；重新安装才会把它们带进来。
 - **manifest 抓取是 GitHub 形状的。** repository url 会被解析成它的 `raw/main` manifest；其他主机则需要显式的 manifest url。
 - **skill 条目必须在插件的 `skills/` 目录顶层就能被发现。** 一个不含 `SKILL.md` 的目录，或一个非 Markdown 的文件，会被报告并跳过而不是复制：`skill-filesystem` 恰好只读一层，把它复制进发现根目录只会产出一个模型永远看不到的文件。
 - **catalog 是一份快照。** marketplace 可能在读取与点击之间改变。`marketplace.install` 会在安装时从注册重新解析该条目，因此记录的 pin 是当下的那个、而不是面板显示的；一个在两次读取之间消失的名称会以 `marketplace/not-found` 失败，而不是安装了别的东西。

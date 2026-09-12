@@ -191,7 +191,7 @@ describe('resolveRefSha over a real remote', () => {
 })
 
 describe('fetchPlugin from a local source', () => {
-  it('uses the directory in place and reports what it carries', async () => {
+  it('copies the directory into the destination and reports what it carries', async () => {
     const local = join(scratch, 'local-plugin')
     mkdirSync(join(local, 'skills', 'audit'), { recursive: true })
     mkdirSync(join(local, 'commands'), { recursive: true })
@@ -199,10 +199,27 @@ describe('fetchPlugin from a local source', () => {
 
     const result = await fetchPlugin({ kind: 'local', path: local }, destination('local'))
 
-    // Nothing is copied for a local source: the caller reads the directory the
-    // manifest named, and an absent sha is reported as the empty string.
-    expect(result).toEqual({ root: local, capabilities: ['skills', 'commands', 'mcp'], resolvedSha: '' })
-    expect(existsSync(destination('local'))).toBe(false)
+    // The install owns its bytes, so an uninstall removes the copy under the
+    // plugins root and never the directory the manifest named. An absent
+    // revision is reported as the empty string rather than invented.
+    expect(result).toEqual({ root: destination('local'), capabilities: ['skills', 'commands', 'mcp'], resolvedSha: '' })
+    expect(existsSync(join(destination('local'), 'skills', 'audit'))).toBe(true)
+    expect(existsSync(join(destination('local'), 'commands'))).toBe(true)
+    expect(existsSync(join(destination('local'), '.mcp.json'))).toBe(true)
+  })
+
+  it('leaves a repository directory behind rather than installing it', async () => {
+    const local = join(scratch, 'repo-plugin')
+    mkdirSync(join(local, '.git'), { recursive: true })
+    writeFileSync(join(local, '.git', 'config'), '[remote "origin"]\n\turl = https://example.test/x.git\n')
+    mkdirSync(join(local, 'skills'), { recursive: true })
+
+    await fetchPlugin({ kind: 'local', path: local }, destination('repo'))
+
+    // What an install owns is plugin content. Copying the clone in would put a
+    // remote url and an object database under the plugins root.
+    expect(existsSync(join(destination('repo'), 'skills'))).toBe(true)
+    expect(existsSync(join(destination('repo'), '.git'))).toBe(false)
   })
 
   it('refuses a local source that is not on disk', async () => {

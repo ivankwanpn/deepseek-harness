@@ -15,7 +15,7 @@
 import { execFile } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { promisify } from 'node:util'
 import type { PluginSource } from './parse.ts'
 import type { InstalledCapability } from './state.ts'
@@ -128,6 +128,29 @@ export interface FetchPluginResult {
   resolvedSha: string
 }
 
+/** A repository's own metadata: an installed plugin is data, not a nested clone. */
+const REPOSITORY_METADATA = '.git'
+
+/**
+ * Put fetched content at its final location.
+ *
+ * `destination` is replaced wholesale, so an earlier install cannot survive
+ * underneath the new one, and a `.git` directory is left behind: what an install
+ * owns is plugin content, and carrying a clone's remote url and object database
+ * into it is neither wanted nor part of what the install record describes.
+ *
+ * @param from - directory holding the content to install.
+ * @param destination - absolute directory to replace.
+ */
+function placeContent(from: string, destination: string): void {
+  rmSync(destination, { recursive: true, force: true })
+  mkdirSync(join(destination, '..'), { recursive: true })
+  cpSync(from, destination, {
+    recursive: true,
+    filter: entry => basename(entry) !== REPOSITORY_METADATA,
+  })
+}
+
 /**
  * Fetch one plugin source into `destination`.
  *
@@ -135,8 +158,8 @@ export interface FetchPluginResult {
  * place, so a failed or partial fetch can never leave a half-populated install
  * directory that a later sync would treat as valid.
  *
- * @param source - the parsed source to fetch; a `local` source is used in place
- * rather than copied, while a git source must carry a pinned `sha`.
+ * @param source - the parsed source to fetch; a `local` source is copied out of
+ * the directory the manifest named, while a git source must carry a pinned `sha`.
  * @param destination - absolute directory to populate; replaced wholesale so a
  * previous install cannot survive underneath the new one.
  * @returns where the content landed, what it carries, and the commit git
@@ -147,7 +170,8 @@ export interface FetchPluginResult {
 export async function fetchPlugin(source: PluginSource, destination: string): Promise<FetchPluginResult> {
   if (source.kind === 'local') {
     if (!existsSync(source.path)) throw new PluginFetchError(`local source ${source.path} does not exist`)
-    return { root: source.path, capabilities: detectCapabilities(source.path), resolvedSha: '' }
+    placeContent(source.path, destination)
+    return { root: destination, capabilities: detectCapabilities(destination), resolvedSha: '' }
   }
 
   if (source.sha === undefined) {
@@ -196,11 +220,7 @@ export async function fetchPlugin(source: PluginSource, destination: string): Pr
       throw new PluginFetchError(`subdirectory ${source.subdirectory} not present at ${source.sha}`)
     }
 
-    rmSync(destination, { recursive: true, force: true })
-    mkdirSync(join(destination, '..'), { recursive: true })
-    // Copy out of scratch; the scratch dir keeps no .git, so an installed plugin
-    // is data, not a nested repository.
-    cpSync(contentRoot, destination, { recursive: true })
+    placeContent(contentRoot, destination)
 
     return { root: destination, capabilities: detectCapabilities(destination), resolvedSha: head }
   } finally {
