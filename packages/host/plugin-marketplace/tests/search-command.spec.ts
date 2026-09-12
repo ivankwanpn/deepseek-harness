@@ -14,6 +14,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runMarketplace } from '../src/marketplace-command.ts'
+import {
+  defaultStatePath,
+  emptyState,
+  rowIdFor,
+  saveState,
+  upsertInstalled,
+  upsertMarketplace,
+  type InstalledEntry,
+} from '../src/state.ts'
 
 const PINNED = { source: 'git', url: 'https://example.test/pinned.git', sha: 'a'.repeat(40) }
 const OFFICIAL = 'https://example.test/official/marketplace.json'
@@ -31,6 +40,42 @@ function captureStdout(): { read: () => string } {
     return true
   })
   return { read: () => chunks.join('') }
+}
+
+/** Serve one official manifest, so no case in this suite reaches the network. */
+function serveOfficial(plugins: readonly unknown[]): void {
+  vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ name: 'official', plugins }), { status: 200 }))
+}
+
+/**
+ * Seed the state the command reads, rather than building it through `add`.
+ *
+ * A case that needs an installed record, or an entry with no description,
+ * states that directly: `add` fetches a manifest before it registers one, so
+ * routing these cases through it would make each depend on a fetch it is not
+ * about.
+ */
+function seedState(
+  registrations: readonly (readonly [string, string])[],
+  installed: readonly InstalledEntry[] = [],
+): void {
+  let state = emptyState()
+  for (const [name, url] of registrations) state = upsertMarketplace(state, name, url)
+  for (const entry of installed) state = upsertInstalled(state, entry)
+  saveState(defaultStatePath(scratch), state)
+}
+
+/** One installed record, as the state file carries it. */
+function installedRecord(plugin: string): InstalledEntry {
+  return {
+    id: rowIdFor(plugin),
+    marketplace: 'official',
+    plugin,
+    sourceUrl: 'https://example.test/pinned.git',
+    installPath: join(scratch, 'content', plugin),
+    capabilities: [],
+    installedAt: new Date(0).toISOString(),
+  }
 }
 
 beforeEach(() => {
@@ -108,5 +153,42 @@ describe('marketplace search', () => {
     const output = stdout.read()
     expect(output).toContain('deploy')
     expect(stderr.join('')).toContain('connection refused')
+  })
+
+  it('marks an entry that already has an installed record', async () => {
+    const stdout = captureStdout()
+    serveOfficial([{ name: 'deploy', description: 'deploy flow', source: PINNED }])
+    seedState([['official', OFFICIAL]], [installedRecord('deploy')])
+
+    expect(await runMarketplace(['search', 'deploy'])).toBe(0)
+    expect(stdout.read()).toContain('deploy [installed]\n')
+  })
+
+  it('prints a bare name for an entry with no description', async () => {
+    const stdout = captureStdout()
+    serveOfficial([{ name: 'deploy', source: PINNED }])
+    seedState([['official', OFFICIAL]])
+
+    expect(await runMarketplace(['search', 'deploy'])).toBe(0)
+    // The whole stream rather than a substring: a stray indented blank line
+    // would still contain the name.
+    expect(stdout.read()).toBe('deploy\n')
+  })
+
+  it('says so when the query matches nothing', async () => {
+    const stdout = captureStdout()
+    serveOfficial([{ name: 'deploy', description: 'deploy flow', source: PINNED }])
+    seedState([['official', OFFICIAL]])
+
+    expect(await runMarketplace(['search', 'nope'])).toBe(0)
+    expect(stdout.read()).toBe('no plugin matched "nope"\n')
+  })
+
+  it('refuses when no marketplace is registered', async () => {
+    const stdout = captureStdout()
+
+    expect(await runMarketplace(['search', 'deploy'])).toBe(1)
+    expect(stdout.read()).toBe('')
+    expect(stderr.join('')).toBe('dsh: no marketplaces registered; run `dsh plugin marketplace add official`\n')
   })
 })
