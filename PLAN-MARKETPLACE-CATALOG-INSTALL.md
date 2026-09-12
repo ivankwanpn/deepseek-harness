@@ -336,7 +336,7 @@ describe('catalog', () => {
         tags: [],
         installable: false,
         installed: false,
-        warnings: ['source "https://example.test/loose.git" has no sha pin'],
+        warnings: ['git source has no sha pin'],
       },
     ])
   })
@@ -547,13 +547,23 @@ Create `packages/host/plugin-marketplace/tests/search-command.spec.ts`:
  * Its output format is what a user reads, and its containment is the defect
  * this change fixes: one unreachable registration used to abort the whole
  * command and hide every result from the registrations that answered.
+ *
+ * DSH_HOME is redirected for every case. `runMarketplace` resolves the real
+ * harness home, so without this the suite would register marketplaces in the
+ * user's own `~/.dsh/marketplace/state.json`.
  */
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runMarketplace } from '../src/marketplace-command.ts'
 
 const PINNED = { source: 'git', url: 'https://example.test/pinned.git', sha: 'a'.repeat(40) }
 const OFFICIAL = 'https://example.test/official/marketplace.json'
 const EXTRA = 'https://example.test/extra/marketplace.json'
+
+let scratch: string
+let previousHome: string | undefined
 
 /** Capture everything the command writes to stdout. */
 function captureStdout(): { read: () => string } {
@@ -566,10 +576,16 @@ function captureStdout(): { read: () => string } {
 }
 
 beforeEach(() => {
+  scratch = mkdtempSync(join(tmpdir(), 'dsh-marketplace-search-'))
+  previousHome = process.env.DSH_HOME
+  process.env.DSH_HOME = scratch
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 })
 
 afterEach(() => {
+  if (previousHome === undefined) delete process.env.DSH_HOME
+  else process.env.DSH_HOME = previousHome
+  rmSync(scratch, { recursive: true, force: true })
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
@@ -1480,7 +1496,168 @@ git commit -m "feat(ui-settings-marketplace): install from the catalog behind an
 
 ---
 
-### Task 8: Docs, the note's lifecycle, and the generated artifacts
+### Task 8: REAL-composition coverage through the Loader
+
+`packages/AGENTS.md` requires a non-unit REAL-composition test for a product-visible plugin, and a hand-built `ctx.plugin(...)` suite does not satisfy it. This package has none, so the requirement is currently unpaid. This task boots a test-only `cordis.yml` through the vendored Loader and asserts against the Remote surface of the service the Loader actually composed. The template is [`packages/host/webserver/tests/webserver.spec.ts`](packages/host/webserver/tests/webserver.spec.ts) lines 30-69; [`packages/host/plugin-inventory/tests/inventory.spec.ts`](packages/host/plugin-inventory/tests/inventory.spec.ts) is the sibling that asserts the Remote method list the same way.
+
+**Files:**
+- Create: `packages/host/plugin-marketplace/tests/loader-composition.spec.ts`
+- Modify: `packages/host/plugin-marketplace/package.json` (add `@deepseek-ai/cordis-plugin-include` and `@deepseek-ai/cordis-plugin-loader` to `devDependencies`)
+
+**Interfaces:**
+- Consumes: `MarketplaceGateway` and its `catalog`, `install`, `status` methods (Task 4).
+- Produces: no source change.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `packages/host/plugin-marketplace/tests/loader-composition.spec.ts`:
+
+```ts
+/**
+ * REAL-composition coverage: a test-only cordis.yml booted through the vendored
+ * Loader mounts the marketplace row, and every assertion observes the Remote
+ * surface of the service the Loader actually composed — its config schema, its
+ * namespace, and the methods it publishes — rather than a hand-built context.
+ */
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
+import Loader from '@deepseek-ai/cordis-plugin-loader'
+import Include from '@deepseek-ai/cordis-plugin-include'
+import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
+import MarketplaceGateway from '../src/gateway.ts'
+import { emptyState, saveState, upsertMarketplace } from '../src/state.ts'
+
+const SPECIFIER = '@deepseek-ai/dsh-host-plugin-marketplace/gateway'
+const MANIFEST = 'https://example.test/marketplace.json'
+const PINNED = { source: 'git', url: 'https://example.test/pinned.git', sha: 'a'.repeat(40) }
+
+let root: string | undefined
+let context: Context | undefined
+
+afterEach(async () => {
+  vi.unstubAllGlobals()
+  await context?.fiber.dispose()
+  context = undefined
+  if (root !== undefined) await rm(root, { recursive: true, force: true })
+  root = undefined
+})
+
+/** Write a cordis.yml with one marketplace row, then boot it through the real Loader. */
+async function loadComposition(allowMutations = true): Promise<MarketplaceGateway> {
+  root = await mkdtemp(join(tmpdir(), 'dsh-marketplace-loader-'))
+  const configPath = join(root, 'cordis.yml')
+  await writeFile(configPath, [
+    `- name: '${SPECIFIER}'`,
+    '  config:',
+    `    harnessHome: ${JSON.stringify(root)}`,
+    `    statePath: ${JSON.stringify(join(root, 'marketplace', 'state.json'))}`,
+    `    patchLayerPath: ${JSON.stringify(join(root, 'cordis.patch.yml'))}`,
+    ...(allowMutations ? [] : ['    allowMutations: false']),
+    '',
+  ].join('\n'))
+
+  context = new Context()
+  context.baseUrl = pathToFileURL(root).href + '/'
+  await context.plugin(Loader)
+  context.loader.builtins.include = Include
+  const modules = new Map<string, unknown>([[SPECIFIER, MarketplaceGateway]])
+  context.loader.internal = {
+    version: 'v2',
+    async import(specifier: string) {
+      if (!modules.has(specifier)) throw new Error(`unexpected Loader import: ${specifier}`)
+      return modules.get(specifier)
+    },
+  } as unknown as NonNullable<typeof context.loader.internal>
+
+  await context.loader.create({
+    name: 'cordis:include',
+    config: { path: pathToFileURL(configPath).href },
+  })
+  await context.loader.await()
+  return context.get('marketplace') as MarketplaceGateway
+}
+
+/** Register one marketplace and serve its manifest. */
+async function register(plugins: readonly object[]): Promise<void> {
+  await mkdir(join(root!, 'marketplace'), { recursive: true })
+  saveState(join(root!, 'marketplace', 'state.json'), upsertMarketplace(emptyState(), 'test', MANIFEST))
+  vi.stubGlobal('fetch', async () => new Response(
+    JSON.stringify({ name: 'test', plugins }),
+    { status: 200 },
+  ))
+}
+
+describe('marketplace composition through the Loader', () => {
+  it('publishes the namespace and the five methods', async () => {
+    const gateway = await loadComposition()
+    expect(gateway.typertRemote).toMatchObject({ serviceKey: 'marketplace', namespace: 'marketplace' })
+    // Method NAMES as a set: the property is which operations the composed
+    // service publishes. Asserting the whole descriptors would couple this to
+    // the invocation kind and the iteration order, neither of which any
+    // requirement here depends on.
+    expect(remoteMethods(gateway).map(entry => entry.method).sort()).toEqual([
+      'catalog',
+      'install',
+      'setEnabled',
+      'status',
+      'uninstall',
+    ])
+  })
+
+  it('reads the state file the row configured, not a default home', async () => {
+    const gateway = await loadComposition()
+    await register([{ name: 'pinned', description: 'from the composed row', source: PINNED }])
+
+    const view = await gateway.catalog()
+    expect(view.rows.map(row => row.plugin)).toEqual(['pinned'])
+    // The status read proves the composed config reached the service: nothing
+    // was installed, so the installed list is empty but the registration shows.
+    await expect(gateway.status()).resolves.toMatchObject({
+      marketplaces: [{ name: 'test', url: MANIFEST }],
+      installed: [],
+    })
+  })
+
+  it('refuses a write on the read-only row the config declared', async () => {
+    const gateway = await loadComposition(false)
+    await register([{ name: 'pinned', source: PINNED }])
+    await expect(gateway.install({ plugin: 'pinned' })).rejects.toMatchObject({ code: 'marketplace/read-only' })
+    // Browsing is a read, so the same row still answers the catalog.
+    await expect(gateway.catalog()).resolves.toMatchObject({ rows: [{ plugin: 'pinned' }] })
+  })
+})
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `npx vitest run packages/host/plugin-marketplace/tests/loader-composition.spec.ts`
+Expected: FAIL — `Cannot find package '@deepseek-ai/cordis-plugin-include'` until Step 3 adds it. Once it resolves, the first case fails on the two methods Task 4 adds until they exist.
+
+- [ ] **Step 3: Add the two dev dependencies**
+
+```bash
+pnpm add -D --filter @deepseek-ai/dsh-host-plugin-marketplace @deepseek-ai/cordis-plugin-include@workspace:^ @deepseek-ai/cordis-plugin-loader@workspace:^
+```
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `npx vitest run packages/host/plugin-marketplace/tests/loader-composition.spec.ts`
+Expected: PASS, 3 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add packages/host/plugin-marketplace/tests/loader-composition.spec.ts packages/host/plugin-marketplace/package.json pnpm-lock.yaml
+git commit -m "test(marketplace): boot the marketplace row through the real Loader"
+```
+
+---
+
+### Task 9: Docs, the note's lifecycle, and the generated artifacts
 
 **Files:**
 - Modify: `packages/host/plugin-marketplace/README.md`, `README.zh.md`, `README.i18n.yaml`
@@ -1536,10 +1713,10 @@ git commit -m "docs(marketplace): record the catalog and install surface"
 
 ## Self-Review
 
-**Spec coverage.** Every spec section maps to a task: the catalog operation → Task 2; the CLI rewrite and its containment → Task 3; the Remote face, the wire types, and the three failure codes → Task 4; publishing the types → Task 5; the load-on-request section, local filtering, and failure containment → Task 6; the unpinned acknowledgement, the read-only gate, and the post-install render → Task 7; the README pairs and the note lifecycle → Task 8. Both spec alternatives that survived into code (no host-side filtering, no streamed stages) are honored by Tasks 2 and 4.
+**Spec coverage.** Every spec section maps to a task: the catalog operation → Task 2; the CLI rewrite and its containment → Task 3; the Remote face, the wire types, and the three failure codes → Task 4; publishing the types → Task 5; the load-on-request section, local filtering, and failure containment → Task 6; the unpinned acknowledgement, the read-only gate, and the post-install render → Task 7; the README pairs and the note lifecycle → Task 9. Both spec alternatives that survived into code (no host-side filtering, no streamed stages) are honored by Tasks 2 and 4. Task 8 carries a repository requirement the spec does not mention — the REAL-composition test `packages/AGENTS.md` demands of a product-visible plugin.
 
 **Placeholder scan.** No step says "handle errors" or "write tests for the above" without the code. One step deliberately defers verification to a later task: Task 4's `allowUnpinned` success path needs a real git remote, so Task 4 pins the refusal and Task 8's manual check covers the opt-in. That is a stated coverage gap, not a placeholder.
 
 **Type consistency.** `CatalogRow` (Task 2) and `CatalogRowView` (Task 4) carry the same field names deliberately: the wire type is a restatement, not a second vocabulary, and the gateway's spread copies between them field-for-field. `MarketplaceFailure`/`MarketplaceFailureView` agree on `marketplace` and `reason`. `install()` returns `PluginInstallResultView.status` as a `MarketplaceStatusView`, the same type `status()` returns, so the panel's existing `ViewState` accepts it unchanged. `InstallRefusal` (Task 1) is the exact key set of `INSTALL_REFUSAL_CODE` (Task 4); adding a refusal without a code fails the type check rather than falling through.
 
-**Known gap.** No task adds a non-unit REAL-composition test booting the plugin through the Loader, which `packages/AGENTS.md` requires for product-visible plugins. The existing marketplace work has none either. Task 8 Step 5 is where this is noticed; if the reviewer requires it, it is a new task before Task 8, not a footnote.
+**Coverage the plan does not reach.** Task 8 adds the REAL-composition test this package was missing. It asserts composition and the Remote surface; it does not drive the browser, so the panel's own wiring stays covered by the component suite in Tasks 6 and 7 plus the ssh-free `test:gui` rung. If a reviewer requires an assembled-browser case, that is the `DSH_SNAPSHOT=replay pnpm run test:web` rung, which rebuilds every artifact and is deliberately left to the human partner.
