@@ -232,8 +232,15 @@ export function parseMarketplace(raw: unknown): Marketplace {
 
 /**
  * A source is installable under our rules only when it is pinned.
- * @param entry - the parsed entry to classify.
- * @returns true for a local source (already on disk, nothing to resolve) or a
+ *
+ * Classify the source an install would READ, not the entry as the manifest
+ * declares it. A marketplace-relative `local` source is re-expressed by
+ * `installSource` in fetch.ts as a git subdirectory of the marketplace
+ * repository, which carries no `sha`; classifying the declared form calls that
+ * source pinned and an install then refuses it.
+ *
+ * @param entry - the entry carrying the source to classify.
+ * @returns true for a local source that resolves against no repository, or a
  * git source carrying a `sha`; an unpinned git source resolves at fetch time
  * and is therefore refused.
  */
