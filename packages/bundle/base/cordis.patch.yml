@@ -220,6 +220,10 @@
     - id: pwsh-sandbox
       name: '@deepseek-ai/dsh-pwsh-sandbox'
       disabled: !!js process.platform !== 'win32'
+      config:
+        # The two sandboxes are mutually exclusive per platform, so the composed
+        # command timeout is stated on both to keep it equal.
+        timeoutMs: 60000
 
     - id: approval
       name: '@deepseek-ai/dsh-user-approval'
