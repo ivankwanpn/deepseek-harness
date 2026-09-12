@@ -882,7 +882,7 @@ describe('Client Typert API', () => {
     expect(ctx.typert.remotes.list()).toEqual([])
   })
 
-  it('rejects duplicate, live, scoped-service, and Context namespace collisions', async () => {
+  it('rejects duplicate, live, reserved-name, and Context namespace collisions', async () => {
     const call = vi.fn<ConnectionHandle['rpc']['call']>()
       .mockResolvedValue({ ok: true, value: { renamed: true } })
     const ctx = await bench(call)
@@ -915,7 +915,11 @@ describe('Client Typert API', () => {
     })).rejects.toThrow('scoped method probe/rename is already mounted')
     await expect(ctx.remote.$mount({
       package: '@fixture/service-method-conflict',
-      descriptors: [{ ...context, id: '@fixture/probe#probe/remove', method: 'remove' }],
+      descriptors: [{ ...context, id: '@fixture/probe#probe/installDirect', method: 'installDirect' }],
+    })).rejects.toThrow('conflicts with its namespace service')
+    await expect(ctx.remote.$mount({
+      package: '@fixture/service-field-name-conflict',
+      descriptors: [{ ...context, id: '@fixture/probe#probe/methods', method: 'methods' }],
     })).rejects.toThrow('conflicts with its namespace service')
     const scopedService = ctx.get('remote.probe') as unknown as object
     Object.defineProperty(scopedService, 'custom', { configurable: true, value: () => undefined })
@@ -925,6 +929,20 @@ describe('Client Typert API', () => {
     })).rejects.toThrow('conflicts with its namespace service')
     Reflect.deleteProperty(scopedService, 'custom')
     await disposeScoped()
+
+    // The methods a namespace calls its own have to survive whatever the
+    // service is built out of: an unpublished helper must not reserve a name a
+    // namespace publishes, in either direction.
+    for (const method of ['install', 'remove', 'has']) {
+      const dispose = await ctx.remote.$mount({
+        package: `@fixture/plain-${method}`,
+        descriptors: [{ ...maybeDescriptor(), id: `@fixture/probe#probe/${method}`, method }],
+      })
+      const namespace = ctx.remote.probe as unknown as Record<string, unknown>
+      expect(typeof namespace[method]).toBe('function')
+      await dispose()
+      expect(method in namespace).toBe(false)
+    }
 
     const disposeRemoteTypert = ctx.reflect.provide('remote.typert', { owner: 'fixture' })
     await expect(ctx.remote.$mount({
