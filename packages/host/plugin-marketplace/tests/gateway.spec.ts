@@ -345,31 +345,6 @@ describe('marketplace write face', () => {
     await expect(gateway.uninstall({ plugin: 'removed' })).resolves.toMatchObject({ removed: false })
   })
 
-  it('announces a skills move so live clients repull the command list', async () => {
-    const { ctx, gateway } = await harness()
-    installSkillsPlugin('announcer', 'demo')
-    let changes = 0
-    ctx.on('commands/change', () => { changes += 1 })
-
-    // `/` lists user-invocable skills through `command.list`, but the
-    // `commands/change` notification belongs to the commands registry, which
-    // cannot see this plugin's files move. Without it a browser keeps serving
-    // the catalog it fetched before the write.
-    await gateway.setEnabled({ plugin: 'announcer', enabled: false })
-    expect(changes).toBe(1)
-
-    // Nothing moved: making every live client repull would be a false signal.
-    await gateway.setEnabled({ plugin: 'announcer', enabled: false })
-    expect(changes).toBe(1)
-
-    await gateway.setEnabled({ plugin: 'announcer', enabled: true })
-    expect(changes).toBe(2)
-
-    // Uninstall takes the skills away too.
-    await gateway.uninstall({ plugin: 'announcer' })
-    expect(changes).toBe(3)
-  })
-
   it('refuses every write when the deployment serves the panel read-only', async () => {
     const { gateway } = await harness({ allowMutations: false })
     installSkillsPlugin('superpowers', 'brainstorming')

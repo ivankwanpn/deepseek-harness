@@ -229,9 +229,6 @@ export class MarketplaceGateway extends TypertRemoteService {
     const enabled = requireBoolean(request.enabled, 'enabled')
     this.requireMutations()
     const result = setPluginEnabled(this.requireInstalled(plugin), enabled, this.writeTarget())
-    // Only a skills move changes what `/` lists. Announcing a row-only toggle
-    // would make every live client repull a command list that did not change.
-    if (result.skillsMoved) this.notifyCommandSurface()
     return {
       plugin,
       rowsChanged: result.rowsChanged,
@@ -257,7 +254,6 @@ export class MarketplaceGateway extends TypertRemoteService {
       statePath: this.statePath,
       sync: this.writeTarget(),
     })
-    if (removed) this.notifyCommandSurface()
     return { plugin, removed, status: await this.status() }
   }
 
@@ -265,8 +261,8 @@ export class MarketplaceGateway extends TypertRemoteService {
    * Read what the registered marketplaces offer.
    *
    * A read, so a read-only deployment is served: browsing is not a mutation.
-   * It is the only method here that reaches the network, which is why the
-   * panel asks for it on request rather than when its tab opens.
+   * It is the only read here that reaches the network, which is why the panel
+   * asks for it on request rather than when its tab opens.
    *
    * @returns every entry from every readable registration, plus the
    *   registrations that could not be read.
@@ -318,33 +314,6 @@ export class MarketplaceGateway extends TypertRemoteService {
   /** The patch layer and skills root both write paths target. */
   private writeTarget(): SyncOptions {
     return { patchLayerPath: this.patchLayerPath, materialize: this.materialize }
-  }
-
-  /**
-   * Publish that the skills behind `/` may have moved.
-   *
-   * A user-invocable skill is listed by `command.list`, but `commands/change`
-   * belongs to the COMMANDS registry, which cannot see a plugin's files moving —
-   * this write is what moves them, so this write publishes the notification.
-   * It fires after the mutation commits, so a listener that repulls reads the
-   * new state rather than the one it is replacing.
-   *
-   * Listener failures are contained exactly as the registry contains them: a
-   * broken observer must not veto a completed write, and Cordis emit uses
-   * `Array.map`, so one synchronous throw would otherwise starve later
-   * observers.
-   */
-  private notifyCommandSurface(): void {
-    for (const callback of this.ctx.events.dispatch('emit', ['commands/change'])) {
-      try {
-        const returned: unknown = callback()
-        void Promise.resolve(returned).catch((error: unknown) => {
-          this.ctx.logger.warn(`marketplace: commands/change listener rejected: ${String(error)}`)
-        })
-      } catch (error: unknown) {
-        this.ctx.logger.warn(`marketplace: commands/change listener threw: ${String(error)}`)
-      }
-    }
   }
 
   /**
