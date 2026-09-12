@@ -15,7 +15,7 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { afterAll, afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { PwshLocalExecutor, ENCODING_PREAMBLE, candidatePwshPaths, resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
+import { PwshLocalExecutor, ENCODING_PREAMBLE, candidatePwshPaths, isPwsh, resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import SubprocessRuntime from '@deepseek-ai/dsh-subprocess'
 import type { SubprocessHandle, SubprocessOutcome, SubprocessOutputReader, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
@@ -59,8 +59,14 @@ function commandBarrier() {
 }
 
 // The probe follows the executor's own resolution (Program Files installs on
-// Windows are found even when bare `pwsh` is not on PATH).
-const hasPwsh = spawnSync(resolvePwshPath(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '$true'], { encoding: 'utf8' }).status === 0
+// Windows are found even when bare `pwsh` is not on PATH) and requires that
+// resolution to BE pwsh: its Windows PowerShell 5.1 fallback is runnable, but
+// these suites assert which shell was wrapped. vitest.config.ts reaches the
+// same answer through the same two functions, so the coverage exemption is
+// active exactly when these suites skip.
+const resolvedPwsh = resolvePwshPath()
+const hasPwsh = isPwsh(resolvedPwsh)
+  && spawnSync(resolvedPwsh, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '$true'], { encoding: 'utf8' }).status === 0
 
 /** Normalize PowerShell's platform line endings (CRLF on Windows, LF elsewhere). */
 const lf = (text: string): string => text.replace(/\r\n/g, '\n')
@@ -115,6 +121,19 @@ describe('resolvePwshPath and candidatePwshPaths (pure, every platform)', () => 
   it('returns pwsh on non-Windows platforms regardless of the environment', () => {
     expect(resolvePwshPath(undefined, { ProgramFiles: 'P:\\Program Files' }, 'linux')).toBe('pwsh')
     expect(resolvePwshPath(undefined, { PATH: 'P:\\Store' }, 'darwin')).toBe('pwsh')
+  })
+
+  it('recognizes pwsh and refuses the Windows PowerShell 5.1 fallback', () => {
+    // The distinction every availability probe depends on. The fallback keeps
+    // the executor working on a legacy host, but a suite that asserts which
+    // shell was wrapped cannot run against it — and the coverage exemption
+    // standing in for such a suite has to reach the same answer.
+    expect(isPwsh('pwsh')).toBe(true)
+    expect(isPwsh('/opt/pwsh/bin/pwsh')).toBe(true)
+    expect(isPwsh('C:\\Program Files\\PowerShell\\7\\pwsh.exe')).toBe(true)
+    expect(isPwsh('C:\\Program Files\\PowerShell\\7\\PWSH.EXE')).toBe(true)
+    expect(isPwsh('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe')).toBe(false)
+    expect(isPwsh('/bin/sh')).toBe(false)
   })
 
   it('uses stable Windows roots when the environment omits both overrides', () => {

@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import tsconfigPaths from 'vite-tsconfig-paths'
-import { resolvePwshPath } from './packages/shell/pwsh-local/src/resolve.ts'
+import { isPwsh, resolvePwshPath } from './packages/shell/pwsh-local/src/resolve.ts'
 import { defineConfig } from 'vitest/config'
 import { standardDecoratorPlugin, vitestExecArgv } from './vitest.shared.ts'
 import { COVERAGE_EXEMPT_ENV, coverageExemptHeavySuites } from './scripts/coverage-exempt.ts'
@@ -108,10 +108,15 @@ const windowsRunnerCoverageExclusions = process.platform === 'win32'
 // (executor.spec.ts hasPwsh), leaving this file
 // far below per-file 100% on pwsh-less hosts; the exemption keeps those hosts
 // green while CI runners ship pwsh and still enforce the full bar. The probe
-// runs the suites' own resolution (the dependency-free resolve.ts module),
-// so the exemption is active exactly when the suites skip — a mismatched
-// narrower probe could exempt the file on hosts whose suites actually run.
-const pwshCoverageExclusions = spawnSync(resolvePwshPath(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '$true'], { encoding: 'utf8' }).status === 0
+// runs the suites' own resolution (the dependency-free resolve.ts module) AND
+// its isPwsh test, so the exemption is active exactly when the suites skip — a
+// mismatched narrower probe could exempt the file on hosts whose suites
+// actually run, and a looser one (accepting resolvePwshPath's Windows
+// PowerShell 5.1 fallback, which is runnable but is not the shell these suites
+// assert) would leave the exemption off on a host where they cannot run.
+const resolvedPwsh = resolvePwshPath()
+const pwshCoverageExclusions = isPwsh(resolvedPwsh)
+  && spawnSync(resolvedPwsh, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '$true'], { encoding: 'utf8' }).status === 0
   ? []
   : [
       'packages/shell/pwsh-local/src/index.ts',

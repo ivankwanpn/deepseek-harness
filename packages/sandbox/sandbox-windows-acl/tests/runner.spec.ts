@@ -12,7 +12,6 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
 import { AclWriteGrant, tempWriteSid, workspaceWriteSid } from '../src/index.ts'
 
 const isWin32 = process.platform === 'win32'
@@ -20,9 +19,12 @@ const runnerEntry = fileURLToPath(new URL('../src/runner.ts', import.meta.url))
 
 // Functional probe, not where.exe: spawnSync never throws on a missing
 // binary (status null) and where.exe exits 1 without pwsh — only an actual
-// pwsh invocation's exit status is truth.
+// pwsh invocation's exit status is truth. The probe spawns the bare NAME
+// because that is what these cases hand the runner; probing a resolved path
+// would accept resolvePwshPath's Windows PowerShell 5.1 fallback, which the
+// runner then cannot spawn at all.
 function pwshAvailable(): boolean {
-  return spawnSync(resolvePwshPath(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '$true'], { encoding: 'utf8' }).status === 0
+  return spawnSync('pwsh', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '$true'], { encoding: 'utf8' }).status === 0
 }
 
 function runRunner(args: string[], timeoutMs = 30_000) {

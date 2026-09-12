@@ -14,7 +14,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { Context, Service } from '@deepseek-ai/cordis'
 import { SandboxProvider, SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
 import type { ConfinedArgv, RunnerFailureRule, SandboxExecutionPolicy, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
-import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
+import { isPwsh, resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
@@ -23,9 +23,13 @@ import { classifyRunnerFailure, isRunnerSpawnFailure, matchesSignature } from '.
 
 // The same probe pwsh-local's suites and the vitest coverage exemption use:
 // spawnSync never throws on a missing binary (it reports status null), and
-// `where.exe pwsh` exits 1 when pwsh is absent — only the status is truth.
+// `where.exe pwsh` exits 1 when pwsh is absent — only the status is truth. The
+// resolved executable must also BE pwsh: resolvePwshPath's Windows PowerShell
+// 5.1 fallback is runnable, and these cases assert the confined argv is pwsh.
 function pwshAvailable(): boolean {
-  return spawnSync(resolvePwshPath(), ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '$true'], { encoding: 'utf8' }).status === 0
+  const resolved = resolvePwshPath()
+  return isPwsh(resolved)
+    && spawnSync(resolved, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '$true'], { encoding: 'utf8' }).status === 0
 }
 
 const spillDir = mkdtempSync(join(tmpdir(), 'dsh-pwsh-sandbox-spec-'))
