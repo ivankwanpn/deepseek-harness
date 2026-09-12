@@ -22,11 +22,16 @@ import type { ClientRemote } from '@deepseek-ai/dsh-api-gateway/client'
 export type { ClientRemote } from '@deepseek-ai/dsh-api-gateway/client'
 export type { PluginInventorySnapshot } from '@deepseek-ai/dsh-host-plugin-inventory/types'
 export type {
+  CatalogRowView,
   InstalledPluginView,
   InstalledStateView,
+  MarketplaceCatalogView,
+  MarketplaceFailureView,
   MarketplaceRegistrationView,
   MarketplaceStatusView,
   PluginEnablementView,
+  PluginInstallRequest,
+  PluginInstallResultView,
   PluginRemovalView,
   SkillsStateView,
 } from '@deepseek-ai/dsh-host-plugin-marketplace/types'
