@@ -32,11 +32,11 @@ catalog(state: MarketplaceState, options?: { fetch?: FetchOptions }): Promise<Ca
 |---|---|
 | `plugin`、`description`、`category`、`version`、`tags` | 解析后的 `MarketplaceEntry` |
 | `marketplace` | 提供该条目的 manifest 所声明的名称 |
-| `installable` | `isPinned(entry)` |
+| `installable` | `isPinned({ ...entry, source: installSource(entry, registration.url) })` |
 | `warnings` | 条目自身的警告，包含缺 pin 那条 |
 | `installed` | `findInstalled(state, rowIdFor(plugin))` |
 
-`installable` 并不保证安装一定成功。它把 pin 规则应用在 manifest 所声明的那个来源上，而安装会在检查之前先重新解析来源：一个相对于 marketplace 的 `local` 条目在这里通过 pin 规则，随后变成不带 `sha` 的 git 子目录，安装便以未钉住为由拒绝它。
+`installable` 并不保证安装一定成功，因为 marketplace 可能在这次读取与点击之间改变。它把 pin 规则应用在安装会读取的那个来源上——`installSource`，也就是 `installPlugin` 同样执行的那次解析——因此这次读取拒绝的一列，恰好就是只有带上 `allowUnpinned` 才能安装的那一列。相对于 marketplace 的 `local` 条目正是让这项一致性变得吃重的情形：安装会把这样的路径读成 marketplace 仓库的一个 git 子目录，而它不带 `sha`。
 
 一个读不动的 marketplace 变成一条携带其注册名与 fetch 层原因的 `MarketplaceFailure`，循环随即继续。它不会中止整个操作，因此一个不可达的注册无法让另一个可达的注册所提供的清单变成空白。
 
@@ -104,7 +104,7 @@ wire 新增项住在 `./types`，它仍是该约定的唯一归属；`gateway.ts
 
 - 浏览与安装发生在显示这次安装的那个面板里：它列出已注册的插件市场提供的内容并从中安装，而命令行保留这两条命令。
 - `dsh plugin marketplace search` 保持现有输出并获得收容能力：读不动的注册会报告到 stderr，可读的那些所提供的匹配结果照旧打印。
-- `marketplace.catalog` 为每个已注册 marketplace 的每个条目回传一列，`installable` 恰在 manifest 所声明的来源被 pin 规则拒绝时为 false，`installed` 恰在有安装记录时为 true；安装会重新解析来源，因此可能拒绝一个这次读取接受的条目。
+- `marketplace.catalog` 为每个已注册 marketplace 的每个条目回传一列，`installable` 恰在安装会读取的来源不带 `sha` 时为 false，`installed` 恰在有安装记录时为 true。
 - 在只读部署上调用 `marketplace.install` 被以 `marketplace/read-only` 拒绝，而 `marketplace.catalog` 仍然应答；未列出的名称是 `marketplace/not-found`，未钉住且不带 `allowUnpinned` 的条目是 `marketplace/unpinned`。
 - 带 `allowUnpinned: true` 时，同一调用会安装该条目，并记录该 ref 在那一刻指名的 commit，因此这次安装是一个具体的 revision，而不是一个会移动的 ref。
 - 一次成功的安装回传它产生的 status，而该 status 将该插件列为已安装。

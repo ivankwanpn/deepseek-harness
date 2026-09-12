@@ -80,9 +80,9 @@ Two cleanup functions split by what they may delete. `removeMaterializedSkills` 
 
 ### The catalog read
 
-`src/catalog.ts` owns one read that both faces call. It visits every registered marketplace in stored order and returns one row per entry: the fields a list renders, the name the supplying manifest declares, whether this package's pin rule accepts the source, whether an installed record already exists, and the warnings the entry carried.
+`src/catalog.ts` owns one read that both faces call. It visits every registered marketplace in stored order and returns one row per entry: the fields a list renders, the name the supplying manifest declares, whether this package's pin rule accepts the source an install would read, whether an installed record already exists, and the warnings the entry carried.
 
-`installable` is that pin rule's verdict on the entry as the manifest declares it, and it is not a promise that an install succeeds: an install re-resolves the source first, so a marketplace-relative `local` entry this read accepts becomes a git subdirectory carrying no `sha` and is then refused as unpinned. The two verdicts disagree on exactly those entries.
+`installable` is that pin rule's verdict on the source an install would read, and it is not a promise that an install succeeds: a marketplace can change between the read and the click. The verdict and the refusal are decided from the same source, so a row this read declines is exactly one an install accepts only with `allowUnpinned` — which is the acknowledgement the panel asks for. A marketplace-relative `local` entry is what makes that agreement load-bearing: the path names content inside the marketplace repository, so an install reads it as a git subdirectory carrying no `sha`, and the entry is installable only through the acknowledgement.
 
 A registration that cannot be read becomes one reported failure carrying its registration name and the fetch layer's reason, and the loop continues to the next one. The CLI's `search` prints each failure to stderr and still prints the matches the readable registrations supplied, so silence never reads as "this marketplace lists nothing". An empty query lists everything, and a deployment with no registration resolves empty rather than refusing — `search` keeps its own separate refusal for that case.
 
