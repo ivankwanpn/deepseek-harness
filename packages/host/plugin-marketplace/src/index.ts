@@ -41,6 +41,9 @@ export {
   type PluginSource,
 } from './parse.ts'
 
+export { catalog } from './catalog.ts'
+export type { CatalogResult, CatalogRow, MarketplaceFailure } from './catalog.ts'
+
 export {
   DEFAULT_FETCH_TIMEOUT_MS,
   MAX_MANIFEST_BYTES,
