@@ -408,8 +408,6 @@ const MANIFEST = 'https://example.test/marketplace.json'
  */
 vi.mock('../src/git.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/git.ts')>()
-  const { mkdirSync } = await import('node:fs')
-  const { join } = await import('node:path')
   return {
     ...actual,
     fetchPlugin: async (source: PluginSource, destination: string) => {
@@ -463,7 +461,7 @@ describe('marketplace.catalog', () => {
 
     const view = await gateway.catalog()
     expect(view.failed).toEqual([
-      { marketplace: 'down', reason: expect.stringContaining('connection refused') },
+      { marketplace: 'down', reason: expect.stringContaining('connection refused') as string },
     ])
     expect(view.rows.map(row => row.plugin)).toEqual(['pinned'])
   })
@@ -513,7 +511,7 @@ describe('marketplace.install', () => {
 
     await expect(gateway.install({ plugin: 'pinned' })).rejects.toMatchObject({
       code: 'marketplace/install-failed',
-      details: { plugin: 'pinned', reason: expect.stringContaining('connection refused') },
+      details: { plugin: 'pinned', reason: expect.stringContaining('connection refused') as string },
     })
   })
 
