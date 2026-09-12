@@ -360,7 +360,11 @@ describe('catalog', () => {
 
   it('contains one unreachable registration instead of failing the read', async () => {
     serve({ [OFFICIAL]: { name: 'official', plugins: [{ name: 'pinned', source: PINNED }] } })
-    const result = await catalog(registrations(['official', OFFICIAL], ['extra', EXTRA]))
+    // The unreachable registration comes FIRST. With `break` instead of
+    // `continue`, the readable registration after it would never be visited and
+    // `rows` would be empty, so this order is the assertion's whole
+    // discriminating power — the other order passes under either behaviour.
+    const result = await catalog(registrations(['extra', EXTRA], ['official', OFFICIAL]))
 
     expect(result.rows.map(row => row.plugin)).toEqual(['pinned'])
     expect(result.failed).toHaveLength(1)
@@ -594,7 +598,9 @@ afterEach(() => {
 describe('marketplace search', () => {
   it('moves the filtering and the formatting onto the catalog rows', async () => {
     const stdout = captureStdout()
-    await runMarketplace(['add', OFFICIAL])
+    // The stub goes in BEFORE the first command: `add` fetches the manifest
+    // itself, so stubbing afterwards would send `add` to the real network,
+    // fail, register nothing, and make `search` report an empty registry.
     vi.stubGlobal('fetch', async () => new Response(JSON.stringify({
       name: 'official',
       plugins: [
@@ -602,6 +608,7 @@ describe('marketplace search', () => {
         { name: 'deploy', description: 'deploy flow', source: PINNED },
       ],
     }), { status: 200 }))
+    await runMarketplace(['add', OFFICIAL])
 
     expect(await runMarketplace(['search', 'deploy'])).toBe(0)
     const output = stdout.read()
@@ -612,8 +619,6 @@ describe('marketplace search', () => {
 
   it('reports what one unreachable registration cost instead of hiding the rest', async () => {
     const stdout = captureStdout()
-    await runMarketplace(['add', OFFICIAL])
-    await runMarketplace(['add', EXTRA])
     vi.stubGlobal('fetch', async (input: string | URL) => {
       if (String(input) === EXTRA) throw new TypeError('connection refused')
       return new Response(JSON.stringify({
@@ -621,6 +626,8 @@ describe('marketplace search', () => {
         plugins: [{ name: 'deploy', description: 'deploy flow', source: PINNED }],
       }), { status: 200 })
     })
+    await runMarketplace(['add', OFFICIAL])
+    await runMarketplace(['add', EXTRA])
 
     expect(await runMarketplace(['search', ''])).toBe(0)
     const output = stdout.read()
