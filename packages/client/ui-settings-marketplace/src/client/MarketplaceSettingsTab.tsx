@@ -1,6 +1,7 @@
 /**
- * The marketplace tab: what is registered, what is installed, how each plugin
- * stands, and the controls that change it.
+ * The marketplace tab: what is registered, what is installed, what the
+ * registered marketplaces offer, how each plugin stands, and the controls that
+ * change it.
  *
  * Every control is a REQUEST, not a decision. The Host re-reads its own state
  * and re-checks its own permission on each call, and each write returns the
@@ -11,10 +12,15 @@
  * Uninstall is gated behind an explicit acknowledgement because it deletes
  * files. The toggle is not: it moves content between the discovery root and its
  * parked directory, so it is reversible without a re-fetch.
+ *
+ * The available-plugins section is the only read here that leaves the machine,
+ * so it loads when the user asks for it rather than when the tab opens: a git
+ * fetch must not hold up a settings page.
  */
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import type {
   InstalledPluginView,
+  MarketplaceCatalogView,
   MarketplaceStatusView,
   PluginEnablementView,
   PluginRemovalView,
@@ -22,6 +28,7 @@ import type {
 import { Button, RiskConfirmation, Switch, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { CatalogSection } from './CatalogSection.tsx'
 import type { MarketplaceLocaleKey } from './locales.ts'
 import css from './MarketplaceSettingsTab.module.css'
 
@@ -33,6 +40,8 @@ export interface MarketplaceSettingsTabInjected {
   setEnabled: (plugin: string, enabled: boolean) => Promise<PluginEnablementView>
   /** Uninstall one installed plugin, returning the status that write produced. */
   uninstall: (plugin: string) => Promise<PluginRemovalView>
+  /** Read the catalog of installable plugins from the registered marketplaces. */
+  catalog: () => Promise<MarketplaceCatalogView>
 }
 
 /** Full component props assembled by the Settings slot renderer. */
@@ -47,6 +56,19 @@ type ViewState =
   | { readonly status: 'loading' }
   | { readonly status: 'error' }
   | { readonly status: 'ready'; readonly view: MarketplaceStatusView }
+
+/**
+ * Whether the catalog has been read, and what the last read produced.
+ *
+ * `view` is present on every variant so the owner site reads one property; a
+ * re-read keeps the rows already on screen while it runs, and a refresh that
+ * fails shows its error beside them rather than replacing them.
+ */
+type CatalogState =
+  | { readonly status: 'unloaded'; readonly view?: undefined }
+  | { readonly status: 'loading'; readonly view: MarketplaceCatalogView | undefined }
+  | { readonly status: 'ready'; readonly view: MarketplaceCatalogView }
+  | { readonly status: 'failed'; readonly view: MarketplaceCatalogView | undefined }
 
 /**
  * Tone per install state.
@@ -169,6 +191,7 @@ export function MarketplaceSettingsTab({
   status,
   setEnabled,
   uninstall,
+  catalog,
   t,
 }: MarketplaceSettingsTabProps): ReactNode {
   const [state, setState] = useState<ViewState>({ status: 'loading' })
@@ -176,6 +199,8 @@ export function MarketplaceSettingsTab({
   const [confirming, setConfirming] = useState<string | undefined>(undefined)
   const [acknowledged, setAcknowledged] = useState(false)
   const [failures, setFailures] = useState<Readonly<Record<string, string>>>({})
+  const [catalogState, setCatalogState] = useState<CatalogState>({ status: 'unloaded' })
+  const [query, setQuery] = useState('')
 
   const load = useCallback(async (): Promise<void> => {
     setState({ status: 'loading' })
@@ -191,6 +216,25 @@ export function MarketplaceSettingsTab({
   useEffect(() => {
     void load()
   }, [load])
+
+  /**
+   * Read the catalog, on the user's request only.
+   *
+   * The read is deliberately not tied to mount: it is the one call here that
+   * waits on a git fetch, and a failure stays inside this section — the rows
+   * already loaded are kept so a failed refresh does not blank them.
+   */
+  const loadCatalog = useCallback(async (): Promise<void> => {
+    setCatalogState(current => ({ status: 'loading', view: current.view }))
+    try {
+      setCatalogState({ status: 'ready', view: await catalog() })
+    } catch {
+      // Dropped, like the status read's: a failed catalog read is a git or
+      // parse diagnosis for a terminal, and the section's own failure line plus
+      // a re-read is what the user can act on. The rows already read stay.
+      setCatalogState(current => ({ status: 'failed', view: current.view }))
+    }
+  }, [catalog])
 
   /** Run one write, then render the status it returned. */
   const write = useCallback(async (
@@ -270,6 +314,17 @@ export function MarketplaceSettingsTab({
             </ul>
           )}
       </section>
+
+      <CatalogSection
+        t={t}
+        view={catalogState.view}
+        loading={catalogState.status === 'loading'}
+        failed={catalogState.status === 'failed'}
+        query={query}
+        onLoad={() => { void loadCatalog() }}
+        onRefresh={() => { void loadCatalog() }}
+        onQuery={setQuery}
+      />
 
       <RiskConfirmation
         open={confirming !== undefined}

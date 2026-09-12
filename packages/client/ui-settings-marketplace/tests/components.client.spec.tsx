@@ -9,18 +9,29 @@
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { MarketplaceStatusView } from '@deepseek-ai/dsh-api-remotes/client'
+import type { MarketplaceCatalogView, MarketplaceStatusView } from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: pulls this package's `settings.marketplace` LocaleNamespaceMap merge
 // into the aggregate client program. Without it this test's program has no such
 // namespace, and PropsLocale resolves to no `t` seat at all.
 import type {} from '../src/client/index.ts'
+import { matchesQuery } from '../src/client/CatalogSection.tsx'
 import { MarketplaceSettingsTab } from '../src/client/MarketplaceSettingsTab.tsx'
-import type { MarketplaceSettingsTabProps } from '../src/client/MarketplaceSettingsTab.tsx'
+import type {
+  MarketplaceSettingsTabInjected,
+  MarketplaceSettingsTabProps,
+} from '../src/client/MarketplaceSettingsTab.tsx'
 import { en, type MarketplaceLocaleKey } from '../src/client/locales.ts'
 
 afterEach(cleanup)
 
 const t = ((key: MarketplaceLocaleKey): string => en[key]) as MarketplaceSettingsTabProps['t']
+
+/** A promise a case settles by hand, so it can assert the in-flight state. */
+function deferred<T>(): { promise: Promise<T>; reject: (reason: Error) => void } {
+  let reject!: (reason: Error) => void
+  const promise = new Promise<T>((_resolve, rejectPromise) => { reject = rejectPromise })
+  return { promise, reject }
+}
 
 /** A skills-only plugin, an MCP plugin, and one that mounts nothing at all. */
 function status(overrides: Partial<MarketplaceStatusView> = {}): MarketplaceStatusView {
@@ -64,23 +75,34 @@ function status(overrides: Partial<MarketplaceStatusView> = {}): MarketplaceStat
   }
 }
 
+/**
+ * The tab's complete props over one snapshot and stub Remote calls.
+ *
+ * Every Remote call the tab can make is a stub, so a case that asserts a call
+ * was NOT made is asserting the panel's own behavior rather than a missing one.
+ */
+function props(
+  overrides: Partial<MarketplaceSettingsTabInjected> = {},
+  view: MarketplaceStatusView = status(),
+): MarketplaceSettingsTabProps {
+  return {
+    t,
+    status: async () => view,
+    setEnabled: vi.fn(async () => ({ status: view }) as never),
+    uninstall: vi.fn(async () => ({ status: view }) as never),
+    catalog: vi.fn(async () => ({ rows: [], failed: [] })),
+    ...overrides,
+  } as unknown as MarketplaceSettingsTabProps
+}
+
 /** Render the tab over one snapshot and three stub Remote calls. */
-function mount(view: MarketplaceStatusView, overrides: Partial<{
-  setEnabled: MarketplaceSettingsTabProps['setEnabled']
-  uninstall: MarketplaceSettingsTabProps['uninstall']
-}> = {}) {
+function mount(view: MarketplaceStatusView, overrides: Partial<Pick<
+  MarketplaceSettingsTabInjected,
+  'setEnabled' | 'uninstall'
+>> = {}) {
   const setEnabled = overrides.setEnabled ?? vi.fn(async () => ({ status: view }) as never)
   const uninstall = overrides.uninstall ?? vi.fn(async () => ({ status: view }) as never)
-  render(
-    <MarketplaceSettingsTab
-      {...({
-        t,
-        status: async () => view,
-        setEnabled,
-        uninstall,
-      } as unknown as MarketplaceSettingsTabProps)}
-    />,
-  )
+  render(<MarketplaceSettingsTab {...props({ setEnabled, uninstall }, view)} />)
   return { setEnabled, uninstall }
 }
 
@@ -169,5 +191,155 @@ describe('marketplace controls', () => {
     expect(screen.queryByRole('button', { name: 'Uninstall' })).toBeNull()
     // The read itself still renders: read-only is not the same as unavailable.
     expect(screen.getByText('superpowers')).toBeTruthy()
+  })
+})
+
+describe('available plugins', () => {
+  /** One catalog row, with the fields a case does not override left unremarkable. */
+  function row(overrides: Partial<MarketplaceCatalogView['rows'][number]> = {}): MarketplaceCatalogView['rows'][number] {
+    return {
+      plugin: 'commit-helper',
+      marketplace: 'official',
+      description: 'commit flow',
+      tags: [],
+      installable: true,
+      installed: false,
+      warnings: [],
+      ...overrides,
+    }
+  }
+
+  /** Render the tab, ask for the catalog, and wait for the section to appear. */
+  async function browse(catalog: MarketplaceSettingsTabInjected['catalog']): Promise<void> {
+    render(<MarketplaceSettingsTab {...props({ catalog })} />)
+    await screen.findByText('superpowers')
+    fireEvent.click(screen.getByRole('button', { name: 'Browse available plugins' }))
+    expect(await screen.findByText('Available plugins')).toBeTruthy()
+  }
+
+  it('stays unloaded until asked, then renders rows and filters locally', async () => {
+    const catalog = vi.fn(async () => ({
+      rows: [
+        { plugin: 'commit-helper', marketplace: 'official', description: 'commit flow', tags: [], installable: true, installed: false, warnings: [] },
+        { plugin: 'deploy', marketplace: 'official', description: 'deploy flow', category: 'ops', tags: [], installable: true, installed: false, warnings: [] },
+      ],
+      failed: [],
+    }))
+    render(<MarketplaceSettingsTab {...props({ catalog })} />)
+    await screen.findByText('superpowers')
+
+    // Nothing is read until the user asks: the tab must not depend on the network.
+    expect(catalog).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Browse available plugins' }))
+    expect(await screen.findByText('commit-helper')).toBeTruthy()
+    expect(catalog).toHaveBeenCalledTimes(1)
+
+    fireEvent.change(screen.getByPlaceholderText('Filter by name, description, category or tag'), { target: { value: 'ops' } })
+    expect(screen.queryByText('commit-helper')).toBeNull()
+    expect(screen.getByText('deploy')).toBeTruthy()
+    // Filtering is local: one read for the whole interaction.
+    expect(catalog).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a failed catalog read inside its own section', async () => {
+    const catalog = vi.fn(async () => { throw new Error('gateway/internal: boom') })
+    render(<MarketplaceSettingsTab {...props({ catalog })} />)
+    await screen.findByText('superpowers')
+    fireEvent.click(screen.getByRole('button', { name: 'Browse available plugins' }))
+
+    expect(await screen.findByText('Could not read the registered marketplaces.')).toBeTruthy()
+    // The sections that read local state still render.
+    expect(screen.getByText('superpowers')).toBeTruthy()
+  })
+
+  it('renders what each row carries, and names the marketplace it could not read', async () => {
+    await browse(vi.fn(async () => ({
+      rows: [
+        // No description and no category: the row still renders its name.
+        { plugin: 'installed-one', marketplace: 'official', tags: [], installable: true, installed: true, warnings: [] },
+        row({ plugin: 'unpinned-one', marketplace: 'ops-inc', installable: false, warnings: ['no pinned revision'] }),
+      ],
+      failed: [{ marketplace: 'flaky', reason: 'git fetch failed' }],
+    })))
+
+    // Both badges state a fact the row cannot otherwise show.
+    expect(screen.getByText('installed')).toBeTruthy()
+    expect(screen.getByText('no pin')).toBeTruthy()
+    expect(screen.getByText('no pinned revision')).toBeTruthy()
+    // A marketplace that could not be read is named beside the ones that could.
+    expect(screen.getByText('Could not read flaky: git fetch failed')).toBeTruthy()
+  })
+
+  it('says the registered marketplaces are empty when they offered nothing', async () => {
+    await browse(vi.fn(async () => ({ rows: [], failed: [] })))
+
+    expect(screen.getByText('Every registered marketplace is empty.')).toBeTruthy()
+  })
+
+  it('says nothing matched when the filter excludes every row it read', async () => {
+    await browse(vi.fn(async () => ({ rows: [row()], failed: [] })))
+
+    fireEvent.change(screen.getByPlaceholderText('Filter by name, description, category or tag'), { target: { value: 'aikido' } })
+
+    expect(screen.getByText('No available plugin matches that filter.')).toBeTruthy()
+    expect(screen.queryByText('commit-helper')).toBeNull()
+  })
+
+  it('keeps the rows it read on screen while a refresh runs, and when it fails', async () => {
+    const refresh = deferred<MarketplaceCatalogView>()
+    const catalog = vi.fn()
+      .mockImplementationOnce(async () => ({ rows: [row()], failed: [] }))
+      .mockImplementationOnce(() => refresh.promise)
+    await browse(catalog)
+    expect(await screen.findByText('commit-helper')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+
+    // The rows already read stay up while the re-read runs: a refresh is not a
+    // blank page, and its failure does not take back what is already known.
+    expect(screen.getByText('Reading the marketplaces…')).toBeTruthy()
+    expect(screen.getByText('commit-helper')).toBeTruthy()
+
+    refresh.reject(new Error('gateway/internal: boom'))
+    expect(await screen.findByText('Could not read the registered marketplaces.')).toBeTruthy()
+    expect(screen.getByText('commit-helper')).toBeTruthy()
+    expect(catalog).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('catalog filter', () => {
+  /** A row carrying every field the CLI searches. */
+  const searchable: MarketplaceCatalogView['rows'][number] = {
+    plugin: 'commit-helper',
+    marketplace: 'official',
+    description: 'commit flow',
+    category: 'vcs',
+    tags: ['git', 'hooks'],
+    installable: true,
+    installed: false,
+    warnings: [],
+  }
+
+  it('matches the four fields the CLI searches, case-insensitively', () => {
+    expect(matchesQuery(searchable, '')).toBe(true)
+    expect(matchesQuery(searchable, 'COMMIT')).toBe(true)
+    expect(matchesQuery(searchable, 'commit FLOW')).toBe(true)
+    expect(matchesQuery(searchable, 'VCS')).toBe(true)
+    expect(matchesQuery(searchable, 'hooks')).toBe(true)
+    expect(matchesQuery(searchable, 'aikido')).toBe(false)
+  })
+
+  it('searches a row that states no description and no category', () => {
+    const sparse: MarketplaceCatalogView['rows'][number] = {
+      plugin: 'commit-helper',
+      marketplace: 'official',
+      tags: ['git', 'hooks'],
+      installable: true,
+      installed: false,
+      warnings: [],
+    }
+    expect(matchesQuery(sparse, 'commit-helper')).toBe(true)
+    expect(matchesQuery(sparse, 'hooks')).toBe(true)
+    expect(matchesQuery(sparse, 'vcs')).toBe(false)
   })
 })

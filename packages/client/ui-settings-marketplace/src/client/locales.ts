@@ -46,6 +46,18 @@ export type MarketplaceLocaleKey =
   | 'working'
   | 'actionFailed'
   | 'readOnly'
+  | 'catalogTitle'
+  | 'catalogLoad'
+  | 'catalogLoading'
+  | 'catalogRefresh'
+  | 'catalogSearchPlaceholder'
+  | 'catalogEmpty'
+  | 'catalogNoMatch'
+  | 'catalogFailed'
+  | 'catalogMarketplaceFailed'
+  | 'catalogInstalled'
+  | 'catalogInstall'
+  | 'catalogUnpinned'
 
 /** Simplified Chinese dictionary. */
 export const zh: Record<MarketplaceLocaleKey, string> = {
@@ -86,6 +98,18 @@ export const zh: Record<MarketplaceLocaleKey, string> = {
   working: '正在写入…',
   actionFailed: '操作失败：',
   readOnly: '此部署以只读方式提供插件市场面板，因此不提供启用、停用与卸载。',
+  catalogTitle: '可安装的插件',
+  catalogLoad: '浏览可安装的插件',
+  catalogLoading: '正在读取插件市场…',
+  catalogRefresh: '重新整理',
+  catalogSearchPlaceholder: '依名称、说明、分类或标签过滤',
+  catalogEmpty: '已注册的插件市场都是空的。',
+  catalogNoMatch: '没有可安装的插件符合这个过滤条件。',
+  catalogFailed: '无法读取已注册的插件市场。',
+  catalogMarketplaceFailed: '无法读取',
+  catalogInstalled: '已安装',
+  catalogInstall: '安装',
+  catalogUnpinned: '未钉选',
 }
 
 /** English dictionary. */
@@ -127,4 +151,16 @@ export const en: Record<MarketplaceLocaleKey, string> = {
   working: 'Writing…',
   actionFailed: 'The action failed: ',
   readOnly: 'This deployment serves the marketplace panel read-only, so it offers no enable, disable or uninstall.',
+  catalogTitle: 'Available plugins',
+  catalogLoad: 'Browse available plugins',
+  catalogLoading: 'Reading the marketplaces…',
+  catalogRefresh: 'Refresh',
+  catalogSearchPlaceholder: 'Filter by name, description, category or tag',
+  catalogEmpty: 'Every registered marketplace is empty.',
+  catalogNoMatch: 'No available plugin matches that filter.',
+  catalogFailed: 'Could not read the registered marketplaces.',
+  catalogMarketplaceFailed: 'Could not read',
+  catalogInstalled: 'installed',
+  catalogInstall: 'Install',
+  catalogUnpinned: 'no pin',
 }

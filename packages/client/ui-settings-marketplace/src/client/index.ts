@@ -17,6 +17,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-host-plugin-marketplace/remote'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
+  MarketplaceCatalogView,
   MarketplaceStatusView,
   PluginEnablementView,
   PluginRemovalView,
@@ -71,6 +72,7 @@ export function apply(ctx: ClientContext): void {
     unwrap(() => ctx.remote.marketplace.setEnabled({ plugin, enabled }))
   const uninstall = (plugin: string): Promise<PluginRemovalView> =>
     unwrap(() => ctx.remote.marketplace.uninstall({ plugin }))
+  const catalog = (): Promise<MarketplaceCatalogView> => unwrap(() => ctx.remote.marketplace.catalog())
 
   ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
     name: 'settings.plugins.tab',
@@ -79,6 +81,6 @@ export function apply(ctx: ClientContext): void {
     order: 20,
     label: () => t('tab'),
     locale: NS,
-    inject: (): MarketplaceSettingsTabInjected => ({ status, setEnabled, uninstall }),
+    inject: (): MarketplaceSettingsTabInjected => ({ status, setEnabled, uninstall, catalog }),
   }, MarketplaceSettingsTab))
 }
