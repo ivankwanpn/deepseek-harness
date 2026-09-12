@@ -214,7 +214,9 @@ describe('marketplace controls', () => {
   it('prints a refusal that is not an Error as its own text', async () => {
     const { uninstall } = mount(status(), {
       // The panel reports whatever the write threw, so a refusal that arrives as
-      // a bare value still has to reach the card instead of a blank failure.
+      // a bare value still has to reach the card instead of a blank failure. The
+      // bare value is the case under test here, not an oversight.
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- the rejection reason is the subject.
       uninstall: vi.fn(() => Promise.reject('marketplace refused')),
     })
 
