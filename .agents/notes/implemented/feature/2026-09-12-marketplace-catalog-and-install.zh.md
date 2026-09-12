@@ -119,7 +119,7 @@ wire 新增项住在 `./types`，它仍是该约定的唯一归属；`gateway.ts
 
 ## 测试
 
-`tests/catalog.spec.ts` 覆盖这次读取：每个条目一列、可安装性与已安装标记由 Host 判定、读不动的注册被收容（排序让不可达的那个先被走访）、跨 marketplace 的注册顺序，以及空注册。`tests/search-command.spec.ts` 直接驱动该 CLI 命令，并钉住收容的两半——可读注册的匹配结果在 stdout、失败注册的原因在 stderr——连同输出格式、`[installed]` 标记与无匹配行。`tests/gateway.spec.ts` 钉住公布的五个方法、安装失败码、只读拒绝、只读部署上 catalog 仍然应答，以及成功安装同时回传它记录的内容与那份状态。`tests/install-reasons.spec.ts` 断言四种拒绝的 `reason` 栏位而不是它们的消息，因此改写消息无法改变 wire 代码。记录 ref 所解析出的 commit 的那条 opt-in 路径（`allowUnpinned: true`）是这里唯一没有自动化覆盖的行为：它需要真实的 git 远端，因此测试只钉住该 opt-in 所解除的那次拒绝。
+`tests/catalog.spec.ts` 覆盖这次读取：每个条目一列、可安装性与已安装标记由 Host 判定、读不动的注册被收容（排序让不可达的那个先被走访）、跨 marketplace 的注册顺序，以及空注册。`tests/search-command.spec.ts` 直接驱动该 CLI 命令，并钉住收容的两半——可读注册的匹配结果在 stdout、失败注册的原因在 stderr——连同输出格式、`[installed]` 标记与无匹配行。`tests/gateway.spec.ts` 钉住公布的五个方法、安装失败码、只读拒绝、只读部署上 catalog 仍然应答、成功安装同时回传它记录的内容与那份状态，以及 pin opt-in 的两臂：同一个未钉住的请求不带 `allowUnpinned` 时被拒绝，带上时安装解析器指名的那一个 commit。`tests/install-reasons.spec.ts` 断言四种拒绝的 `reason` 栏位而不是它们的消息，因此改写消息无法改变 wire 代码。`tests/install-unpinned.spec.ts` 在安装层驱动「先解析、再钉住」这条路径：只对 `resolveRefSha` 与 `fetchPlugin` 打桩，并断言条目声明的 ref 正是被解析的那一个、回传的 commit 正是安装写进 state 的那一个，而预设那一臂在询问任何远端之前就拒绝。仍未覆盖的是 `resolveRefSha` 自身的 `git ls-remote` 调用与 HEAD→`main`→`master` 回退，它们需要真实远端。
 
 `tests/loader-composition.spec.ts` 就是 [packages/AGENTS.md](../../../../packages/AGENTS.md) 对产品可见插件所要求的 REAL-composition 测试。它写出一份只用于测试的 `cordis.yml`，其中带有 marketplace 行，经 vendored Loader 启动它，并针对 Loader 实际组合出的服务断言：`marketplace` 命名空间、五个方法、该行组态的 state path 就是读取实际使用的那个路径，以及 `allowMutations: false` 的行会拒绝 `install` 而 `catalog` 仍然应答。manifest 抓取是唯一被打桩的外部服务；Loader 经自己的模组接缝解析该行，因此组态是经 Loader 抵达服务的，而不是经由一个手搭的 context。
 

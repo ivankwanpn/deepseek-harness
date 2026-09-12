@@ -27,6 +27,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  resolveRefSha.mockReset()
   rmSync(scratch, { recursive: true, force: true })
 })
 
@@ -373,13 +374,25 @@ const LOOSE = { source: 'git', url: 'https://example.test/loose.git' }
 const MANIFEST = 'https://example.test/marketplace.json'
 
 /**
- * Stand in for the one step an install cannot take without a network: the clone.
+ * The commit the stubbed ref resolution names for an unpinned source.
+ *
+ * `resolveRefSha` asks a remote what a ref points at, which is the one install
+ * step the pin opt-in adds, so the resolution is stubbed and everything the
+ * install does with the commit it returns stays real.
+ */
+const resolveRefSha = vi.hoisted(() => vi.fn<(url: string, ref?: string) => Promise<string>>())
+const RESOLVED_SHA = 'c'.repeat(40)
+
+/**
+ * Stand in for the two steps an install cannot take without a network: the
+ * clone, and the ref resolution the pin opt-in performs.
  *
  * `fetchPlugin` shells out to git, so a pinned git source is the half no unit
  * test here can reach; everything install does with what the fetch hands back is
- * the same either way, and that is what the success case pins. Every other
- * export stays real, so capabilities and warnings are still read from the tree
- * the fetch left on disk.
+ * the same either way, and that is what the success case pins. The stub reports
+ * the source's sha as the commit it checked out, which is what a real fetch of a
+ * resolved commit returns. Every other export stays real, so capabilities and
+ * warnings are still read from the tree the fetch left on disk.
  */
 vi.mock('../src/git.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/git.ts')>()
@@ -393,6 +406,7 @@ vi.mock('../src/git.ts', async (importOriginal) => {
         resolvedSha: source.kind === 'git' ? (source.sha ?? '') : '',
       }
     },
+    resolveRefSha,
   }
 })
 
@@ -455,12 +469,28 @@ describe('marketplace.install', () => {
     await expect(gateway.install({ plugin: 'absent' })).rejects.toMatchObject({ code: 'marketplace/not-found' })
   })
 
-  // The opt-in half of this refusal needs a real git remote, so it is checked by
-  // Task 8's manual pass rather than here.
   it('refuses an unpinned entry', async () => {
     const { gateway } = await harness()
     await withMarketplace([{ name: 'loose', source: LOOSE }])
     await expect(gateway.install({ plugin: 'loose' })).rejects.toMatchObject({ code: 'marketplace/unpinned' })
+  })
+
+  it('installs an unpinned entry when the request accepts the pin it resolves', async () => {
+    const { gateway } = await harness()
+    await withMarketplace([{ name: 'loose', source: LOOSE }])
+
+    // The refusal above and the install below are the same request; only the
+    // flag differs, so accepting a moving ref is the caller's decision rather
+    // than a property of the entry.
+    resolveRefSha.mockResolvedValue(RESOLVED_SHA)
+    const result = await gateway.install({ plugin: 'loose', allowUnpinned: true })
+
+    // The entry declares no ref, so the remote's HEAD is what was resolved.
+    expect(resolveRefSha).toHaveBeenCalledWith(LOOSE.url, 'HEAD')
+    // That commit is the install's pin, on the returned result and in the state
+    // the panel reads back.
+    expect(result).toMatchObject({ plugin: 'loose', sha: RESOLVED_SHA })
+    expect(result.status.installed[0]).toMatchObject({ plugin: 'loose', sha: RESOLVED_SHA })
   })
 
   it('returns what the install recorded and the status that produced', async () => {
