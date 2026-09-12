@@ -101,8 +101,11 @@
     - id: plugin-inventory
       name: '@deepseek-ai/dsh-host-plugin-inventory'
 
-    # Read-only marketplace status: what is registered and what is installed,
-    # with enablement read back from the patch layer on every request.
+    # Marketplace over Typert Remote: `status` and `catalog` read what is
+    # registered, installed and offered; `install`, `setEnabled` and
+    # `uninstall` install third-party code, mount it and remove it. All three
+    # are gated by `allowMutations` (default true), so a row setting it false
+    # is the opt-out that leaves this row serving its two reads alone.
     - id: marketplace
       name: '@deepseek-ai/dsh-host-plugin-marketplace/gateway'
 
