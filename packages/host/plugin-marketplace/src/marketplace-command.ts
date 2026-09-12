@@ -14,9 +14,10 @@ import { join } from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { PROFILE_PATCH_FILENAME } from '@deepseek-ai/dsh-app-boot'
 import { addMarketplace, installPlugin, uninstallPlugin } from './install.ts'
-// Both are needed: `add` takes a repo-or-url and must resolve it, while every
-// later command reads a url that `add` already resolved to a manifest.
-import { fetchMarketplace, fetchMarketplaceFrom } from './fetch.ts'
+import { catalog } from './catalog.ts'
+// `add` takes a repo-or-url and must resolve it; every later command reads a url
+// that `add` already resolved to a manifest.
+import { fetchMarketplaceFrom } from './fetch.ts'
 import { parsePatchLayer, readEnabled } from './patch-layer.ts'
 import {
   defaultStatePath,
@@ -153,18 +154,21 @@ export async function runMarketplace(args: readonly string[]): Promise<number> {
         process.stderr.write(`${NAME}: no marketplaces registered; run \`dsh plugin marketplace add official\`\n`)
         return 1
       }
+      const { rows, failed } = await catalog(ctx.state)
+      // A registration that could not be read is reported on stderr and does
+      // not stop the rows the readable ones supplied. Silence here would read
+      // as "this marketplace lists nothing", which is a different fact.
+      for (const failure of failed) {
+        process.stderr.write(`${NAME}: ${failure.marketplace}: ${failure.reason}\n`)
+      }
       let matches = 0
-      for (const registration of ctx.state.marketplaces) {
-        const market = await fetchMarketplace(registration.url)
-        for (const plugin of market.plugins) {
-          const haystack = `${plugin.name} ${plugin.description ?? ''} ${plugin.category ?? ''} ${plugin.tags.join(' ')}`.toLowerCase()
-          if (query !== '' && !haystack.includes(query)) continue
-          matches++
-          const installed = findInstalled(ctx.state, rowIdFor(plugin.name)) !== undefined ? ' [installed]' : ''
-          process.stdout.write(`${plugin.name}${installed}\n`)
-          if (plugin.description !== undefined) {
-            process.stdout.write(`    ${plugin.description.slice(0, 140)}\n`)
-          }
+      for (const row of rows) {
+        const haystack = `${row.plugin} ${row.description ?? ''} ${row.category ?? ''} ${row.tags.join(' ')}`.toLowerCase()
+        if (query !== '' && !haystack.includes(query)) continue
+        matches++
+        process.stdout.write(`${row.plugin}${row.installed ? ' [installed]' : ''}\n`)
+        if (row.description !== undefined) {
+          process.stdout.write(`    ${row.description.slice(0, 140)}\n`)
         }
       }
       if (matches === 0) process.stdout.write(`no plugin matched ${JSON.stringify(query)}\n`)
