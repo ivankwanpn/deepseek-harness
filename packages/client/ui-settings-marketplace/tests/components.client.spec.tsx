@@ -108,6 +108,31 @@ function mount(view: MarketplaceStatusView, overrides: Partial<Pick<
 }
 
 describe('marketplace controls', () => {
+  // The factory above fills both lists, so the empty rendering — the one a
+  // deployment with no marketplaces sees — had no case at all.
+  it('says each list is empty instead of rendering a list with no entries', async () => {
+    mount(status({ marketplaces: [], installed: [] }))
+
+    expect(await screen.findByText(en.marketplacesEmpty)).toBeTruthy()
+    expect(screen.getByText(en.installedEmpty)).toBeTruthy()
+  })
+
+  // The panel reads its snapshot on mount, so a refused read is the state a
+  // deployment behind a broken transport lands in; the retry has to ask again
+  // rather than re-render the failure.
+  it('renders a refused read with a retry that asks the Host again', async () => {
+    const reads = vi.fn()
+      .mockRejectedValueOnce(new Error('transport down'))
+      .mockResolvedValueOnce(status({ marketplaces: [], installed: [] }))
+    render(<MarketplaceSettingsTab {...props({ status: reads })} />)
+
+    expect(await screen.findByText(en.error)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: en.retry }))
+
+    await waitFor(() => { expect(reads).toHaveBeenCalledTimes(2) })
+    expect(await screen.findByText(en.marketplacesEmpty)).toBeTruthy()
+  })
+
   it('shows a toggle for every plugin that mounts something, and none for one that mounts nothing', async () => {
     mount(status())
 
