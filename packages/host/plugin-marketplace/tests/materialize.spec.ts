@@ -278,6 +278,17 @@ describe('the rows one installed entry mounts', () => {
     mkdirSync(join(installPath, 'commands'), { recursive: true })
     expect(materializeEntry(entryFor('commands', installPath, ['commands']), options()).warnings).toEqual([])
 
+    // A carrier whose contents are unusable is still the carrier. Install reads
+    // the capability from the FILE (detectCapabilities), so a sync that read it
+    // from the usable servers instead announced "recorded mcp, found none" on
+    // every run for a .mcp.json declaring nothing it can mount.
+    const carrierPath = join(scratch, 'plugins', 'carrier')
+    mkdirSync(carrierPath, { recursive: true })
+    writeFileSync(join(carrierPath, '.mcp.json'), JSON.stringify({ mcpServers: { unusable: {} } }), 'utf8')
+    const carrier = materializeEntry(entryFor('carrier', carrierPath, ['mcp']), options())
+    expect(carrier.rows).toEqual([])
+    expect(carrier.warnings.join(' ')).not.toContain('capabilities changed')
+
     // A genuinely different set is still reported, in both directions.
     const skillsPath = pluginWithSkills('shrunk', { solo: 'Only one.' })
     expect(materializeEntry(entryFor('shrunk', skillsPath, ['mcp']), options()).warnings.join(' '))

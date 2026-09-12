@@ -35,7 +35,7 @@ import { InstallError, installPlugin, uninstallPlugin, type InstallRefusal } fro
 import { readPluginMcp, sanitizeServerName, skillEntryNames, skillsEnabled, type MaterializeOptions } from './materialize.ts'
 import { setPluginEnabled } from './operations.ts'
 import { parsePatchLayer, readEnabled } from './patch-layer.ts'
-import { findInstalled, loadState, rowIdFor, type InstalledEntry, type MarketplaceState } from './state.ts'
+import { findInstalled, loadState, mcpRowId, rowIdFor, type InstalledEntry, type MarketplaceState } from './state.ts'
 import type { SyncOptions } from './sync.ts'
 import type {
   InstalledPluginView,
@@ -382,9 +382,7 @@ export class MarketplaceGateway extends TypertRemoteService {
     if (entry.rowIds !== undefined) return [...entry.rowIds]
     // Warnings are discarded: this read reports what IS mounted, and a coerced
     // name is already reflected in the id it produces.
-    return readPluginMcp(entry.installPath, []).map(
-      server => `marketplace:mcp:${sanitizeServerName(server.name, [])}`,
-    )
+    return readPluginMcp(entry.installPath, []).map(server => mcpRowId(sanitizeServerName(server.name, [])))
   }
 
   /**

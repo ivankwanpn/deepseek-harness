@@ -29,6 +29,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installPlugin, resolveEntry, uninstallPlugin, type InstallOptions } from '../src/install.ts'
 import { materializeEntry } from '../src/materialize.ts'
+import { parsePatchLayer, presentIds } from '../src/patch-layer.ts'
 import type { PluginSource } from '../src/parse.ts'
 import {
   emptyState,
@@ -39,7 +40,7 @@ import {
   upsertMarketplace,
   type InstalledEntry,
 } from '../src/state.ts'
-import type { SyncOptions } from '../src/sync.ts'
+import { sync, type SyncOptions } from '../src/sync.ts'
 
 const MANIFEST = 'https://example.test/marketplace.json'
 const PINNED = { source: 'git', url: 'https://example.test/pinned.git', sha: 'a'.repeat(40) }
@@ -155,15 +156,21 @@ describe('a marketplace that publishes renames', () => {
 
     const result = await installPlugin('previous', installOptions())
 
-    // What this holds: a followed rename is REPORTED, and the content it points
-    // at is what landed and was recorded. The message text and the name the
-    // record uses are deliberately not pinned here — install currently records
-    // the caller's name and words the notice with it twice, which is raised
-    // separately as a defect rather than frozen into this suite.
-    expect(result.warnings.some(warning => /was renamed to/u.test(warning))).toBe(true)
-    expect(result.entry.capabilities).toEqual(['commands'])
+    // A followed rename is REPORTED, and everything the install leaves behind
+    // names the entry the marketplace lists: the notice reads old → new, and the
+    // record, its row id and the content directory all carry the new name. An
+    // alias-keyed record would leave the catalog marking the entry uninstalled
+    // and a second install creating a duplicate of it.
+    expect(result.warnings).toContain('previous was renamed to renamed')
+    expect(result.entry).toMatchObject({
+      id: 'marketplace:renamed',
+      plugin: 'renamed',
+      capabilities: ['commands'],
+    })
+    expect(result.entry.installPath).toBe(join(pluginsRoot(), 'renamed'))
     expect(existsSync(result.entry.installPath)).toBe(true)
     expect(loadState(statePath()).installed).toHaveLength(1)
+    expect(loadState(statePath()).installed[0]?.plugin).toBe('renamed')
   })
 })
 
@@ -332,5 +339,43 @@ describe('uninstalling a record written before skillIds existed', () => {
     expect(existsSync(live)).toBe(false)
     expect(existsSync(installPath)).toBe(false)
     expect(loadState(statePath()).installed).toEqual([])
+  })
+})
+
+describe('uninstalling takes the mounted loader rows with it', () => {
+  it('drops the row the plugin mounted, not only its record and content', () => {
+    // A row is a projection of the state. Once the record is gone nothing in
+    // state names the row as ours, so a layer that keeps it leaves the loader
+    // mounting an mcp-client for a plugin that is no longer installed.
+    const installPath = join(pluginsRoot(), 'row-owner')
+    mkdirSync(installPath, { recursive: true })
+    writeFileSync(
+      join(installPath, '.mcp.json'),
+      JSON.stringify({ mcpServers: { 'row-owner-mcp': { command: 'npx' } } }),
+      'utf8',
+    )
+    const entry: InstalledEntry = {
+      id: rowIdFor('row-owner'),
+      marketplace: 'test',
+      plugin: 'row-owner',
+      sourceUrl: PINNED.url,
+      installPath,
+      capabilities: ['mcp'],
+      installedAt: new Date(0).toISOString(),
+    }
+    saveState(statePath(), upsertInstalled(emptyState(), entry))
+    // A real reconcile is what inserts the row in the first place.
+    sync(loadState(statePath()), syncOptions())
+
+    const mounted = 'marketplace:mcp:row-owner-mcp'
+    expect(presentIds(parsePatchLayer(syncOptions().patchLayerPath).patches).has(mounted)).toBe(true)
+
+    const { removed } = uninstallPlugin(loadState(statePath()), 'row-owner', {
+      statePath: statePath(),
+      sync: syncOptions(),
+    })
+
+    expect(removed).toBe(true)
+    expect(presentIds(parsePatchLayer(syncOptions().patchLayerPath).patches).has(mounted)).toBe(false)
   })
 })

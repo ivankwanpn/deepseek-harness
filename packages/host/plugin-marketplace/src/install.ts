@@ -192,7 +192,12 @@ export async function installPlugin(plugin: string, options: InstallOptions): Pr
     plugin,
     { ...(options.fetch !== undefined ? { fetch: options.fetch } : {}) },
   )
-  if (renamedFrom !== undefined) warnings.push(`${renamedFrom} was renamed to ${plugin}`)
+  // The name the marketplace lists is this install's identity. The record, its
+  // row id, the content directory and every message name it, so a caller who
+  // asked by a renamed alias cannot leave behind a record, a row or a catalog
+  // marker under a name the marketplace no longer publishes.
+  const name = entry.name
+  if (renamedFrom !== undefined) warnings.push(`${renamedFrom} was renamed to ${name}`)
 
   // Recorded with the install so its subdirectory and sha resolve back to these
   // bytes; the source install reads is resolved separately, through the same rule.
@@ -212,14 +217,14 @@ export async function installPlugin(plugin: string, options: InstallOptions): Pr
   if (!isPinned({ ...entry, source: resolved })) {
     throw new InstallError(
       'unpinned',
-      `refusing to install ${plugin}: its source has no sha pin, so the content is not reproducible`
+      `refusing to install ${name}: its source has no sha pin, so the content is not reproducible`
       + ' (pass allowUnpinned / --allow-unpinned to record the commit the ref names now)',
     )
   }
 
   const pluginsRoot = options.pluginsRoot ?? join(options.sync.materialize.harnessHome, 'marketplace', 'plugins')
   mkdirSync(pluginsRoot, { recursive: true })
-  const destination = pluginInstallPath(pluginsRoot, plugin)
+  const destination = pluginInstallPath(pluginsRoot, name)
 
   // Fetch into a staging path first so a failure cannot leave a half-populated
   // install directory that a later sync would treat as valid.
@@ -240,9 +245,9 @@ export async function installPlugin(plugin: string, options: InstallOptions): Pr
   const capabilities = detectCapabilities(destination)
 
   const installed: InstalledEntry = {
-    id: rowIdFor(plugin),
+    id: rowIdFor(name),
     marketplace,
-    plugin,
+    plugin: name,
     sourceUrl: resolved.kind === 'git' ? resolved.url : resolved.path,
     // Prefer the sha git actually checked out over the manifest's declared one.
     // fetchPlugin already fails when they differ, so they agree today; recording
@@ -261,7 +266,7 @@ export async function installPlugin(plugin: string, options: InstallOptions): Pr
   }
 
   if (capabilities.length === 0) {
-    warnings.push(`${plugin} declares no skills, commands, MCP servers or runtime entry; it will install but mount nothing`)
+    warnings.push(`${name} declares no skills, commands, MCP servers or runtime entry; it will install but mount nothing`)
   }
 
   // Record, then reconcile. Overwriting a previous install of the same plugin is

@@ -367,6 +367,9 @@ export function findInstalled(state: MarketplaceState, id: string): InstalledEnt
   return state.installed.find(entry => entry.id === id)
 }
 
+/** The patch-layer id namespace this package inserts under. */
+const MANAGED_ROW_PREFIX = 'marketplace:'
+
 /**
  * The patch-layer row id for one entry. Central so install and sync cannot
  * drift.
@@ -381,5 +384,38 @@ export function findInstalled(state: MarketplaceState, id: string): InstalledEnt
  * row.
  */
 export function rowIdFor(plugin: string): string {
-  return `marketplace:${plugin}`
+  return `${MANAGED_ROW_PREFIX}${plugin}`
+}
+
+/**
+ * The loader row one MCP server mounts under.
+ *
+ * Keyed on the SERVER name rather than the plugin, because `mcp-client`
+ * reserves a `serverName` per scope and refuses a duplicate: two plugins
+ * shipping the same server name are a genuine conflict, and namespacing by
+ * plugin would hide it. Central for the same reason `rowIdFor` is — a caller
+ * reconstructing this id for a record written before `rowIds` existed has to
+ * build the one `materialize` builds.
+ *
+ * @param serverName - the server name after sanitization.
+ * @returns the namespaced row id.
+ */
+export function mcpRowId(serverName: string): string {
+  return `${MANAGED_ROW_PREFIX}mcp:${serverName}`
+}
+
+/**
+ * Whether this package inserted a patch-layer row.
+ *
+ * Ownership has to be decidable from the layer alone. A row inserted for a
+ * plugin that is now uninstalled appears in no desired set, and its state
+ * record went with the plugin, so the namespace is what is left to recognize
+ * it — without this, uninstall removes the record and the content while the
+ * loader keeps mounting the row.
+ *
+ * @param id - a root-level patch-layer row id.
+ * @returns true when this package owns that row.
+ */
+export function isManagedRowId(id: string): boolean {
+  return id.startsWith(MANAGED_ROW_PREFIX)
 }
