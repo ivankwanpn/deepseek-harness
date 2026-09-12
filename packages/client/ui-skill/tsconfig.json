@@ -18,6 +18,9 @@
       "path": "../../core/session"
     },
     {
+      "path": "../../skill/skill"
+    },
+    {
       "path": "../../../vendor/cordis"
     },
     {

@@ -26,7 +26,7 @@ Host 拥有 `agent-preset/selected`、`commands/change`、`credentials/reference
 
 名单内事件全部走这条路径，专用帧与 Client 别名都已删除。模型消费方直接订阅 `llm/adapters-updated` 和 `settings/document-updated`；preset 消费方订阅 `agent-preset/selected`；Session 与动态 Cordis 的无状态通知使用 `emit`；Approval 与 Question 使用 Agent-scoped `waterfall`。真正需要 baseline、投影或去重的数据仍保留专用 Remote stream。
 
-`skills/change`、`tools/change`、`system-prompt/change` 是同形状的纯失效事件但**没有任何已交付消费者**，按「每个抽象都要有当前 owner 与需求」不进名单，只作为扩展位记录在此。
+`tools/change`、`system-prompt/change` 是同形状的纯失效事件但**没有任何已交付消费者**，按「每个抽象都要有当前 owner 与需求」不进名单，只作为扩展位记录在此。`skills/change` 在 `/` 菜单按会话缓存的目录成为其消费方之后进入了名单。
 
 ### 消费端契约（dsh-typert-protocol）
 
@@ -107,7 +107,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 }
 ```
 
-于是**加一个事件只改这一行数组**：类型投影、`$on` 的键面、Host dispatch mode 与转发循环全部从它派生。`ctx.remote.$on('slots/changed', …)`（Client 本地事件）或 `$on('skills/change', …)`（名单没开）都是**编译错误**。
+于是**加一个事件只改这一行数组**：类型投影、`$on` 的键面、Host dispatch mode 与转发循环全部从它派生。条目判定的是**已声明**的签名，因此 owner 套件必须把该声明放进两个编译面都能读到的 Client 安全面——这两个面看不见的事件不是可转发事件，断言会拒绝它。`ctx.remote.$on('slots/changed', …)`（Client 本地事件）或 `$on('tools/change', …)`（名单没开）都是**编译错误**。
 
 数组声明末尾的 `satisfies` 把 Host 事件词汇与 mode 约束落到同一份名单上：
 
@@ -180,7 +180,7 @@ Client 要求首项是带非空 `clientId` 与 `host.home` 的 `ready`；后续 
 钉住该行为的东西：
 
 - Host source 真组合测试：两个 Client stream 各自收到 host emit 的 `{ event, args }`，其中一个断开不会影响另一个；非 JSON 实参会响亮拒绝且不会毒化后续合法事件。
-- 类型层负例拒绝未选择事件、非 `void` 的无 scope 事件、非 Agent-scoped waterfall，以及声明 mode 与签名不符的条目。`$on('slots/changed', …)`（Client 本地事件）与 `$on('skills/change', …)`（已声明但未选中）都编译失败——因此 `$on` 的键面恰好等于名单。
+- 类型层负例拒绝未选择事件、非 `void` 的无 scope 事件、非 Agent-scoped waterfall，以及声明 mode 与签名不符的条目。`$on('slots/changed', …)`（Client 本地事件）与 `$on('tools/change', …)`（已声明但未选中）都编译失败——因此 `$on` 的键面恰好等于名单。
 - 消费端 `$on('settings/document-updated', …)` 把 `ns` 解析为 `SettingsNamespace`：brand 穿过 wire 存活。
 - `$on` 的 disposer 归属调用方 fiber；同一个函数对象订阅两次时两条注册各自独立退订——按 listener 身份做键的表会把它们合并，所以订阅按注册项寻址。
 - 普通通知同时收容抛出的 listener 与拒绝所返回 Promise 的 listener；waterfall 测试固定 Client result、`next()`、拒绝、取消、多 Client 首个 claim 和重连重放 pending request。

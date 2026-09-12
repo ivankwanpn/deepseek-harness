@@ -302,6 +302,27 @@ describe('catalog cache', () => {
     await source.candidates(proj('s2'), req(''))
     expect(payloads).toHaveLength(4)
   })
+
+  it('the forwarded skills/change clears every cached session', async () => {
+    const { list, payloads } = countingList()
+    const { source, remote } = await bench(list)
+    await source.candidates(proj('s1'), req(''))
+    await source.candidates(proj('s2'), req(''))
+    expect(payloads).toHaveLength(2)
+    // The registry's invalidation is unfiltered: one catalog mutation (a
+    // provider registration, a marketplace enable or disable, a filesystem
+    // watcher) can reach any session's provider set, so no key survives and
+    // the next '/'-menu open refetches without a page reload.
+    remote.emit('skills/change', [])
+    await source.candidates(proj('s1'), req(''))
+    await source.candidates(proj('s2'), req(''))
+    expect(payloads).toEqual([
+      { sessionId: 's1' },
+      { sessionId: 's2' },
+      { sessionId: 's1' },
+      { sessionId: 's2' },
+    ])
+  })
 })
 
 describe('lexicon', () => {

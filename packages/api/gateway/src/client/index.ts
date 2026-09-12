@@ -279,7 +279,7 @@ class ClientRemoteService extends Service implements ClientRemote {
       methods.add(descriptor.method)
       table.set(descriptor.namespace, methods)
       const namespace = this.namespaces.get(descriptor.namespace)?.service
-      if (namespace?.has(kind, descriptor.method) === true) {
+      if (namespace?.methods.isMounted(kind, descriptor.method) === true) {
         throw new Error(`client api: ${kind} method ${endpointOf(descriptor)} is already mounted`)
       }
     }
@@ -303,7 +303,6 @@ class ClientRemoteService extends Service implements ClientRemote {
       }
       for (const method of new Set([...(direct.get(namespace) ?? []), ...(scoped.get(namespace) ?? [])])) {
         if (service === undefined) RemoteNamespaceService.assertMethodAvailable(namespace, method)
-        else service.assertMethodAvailable(method)
       }
     }
   }
@@ -336,8 +335,8 @@ class ClientRemoteService extends Service implements ClientRemote {
         if (!method.token.active) continue
         method.token.active = false
         method.token.abort.abort()
-        if (method.scoped) handle.service.remove('scoped', method.descriptor.method, method.token)
-        if (method.direct) handle.service.remove('direct', method.descriptor.method, method.token)
+        if (method.scoped) handle.service.methods.withdraw('scoped', method.descriptor.method, method.token)
+        if (method.direct) handle.service.methods.withdraw('direct', method.descriptor.method, method.token)
       }
       await this.disposeNamespace(name, handle)
     }
@@ -378,7 +377,7 @@ class ClientRemoteService extends Service implements ClientRemote {
   }
 
   private async disposeNamespace(name: string, namespace: RemoteNamespaceHandle): Promise<void> {
-    if (!namespace.service.empty || this.namespaces.get(name) !== namespace) return
+    if (!namespace.service.methods.isEmpty() || this.namespaces.get(name) !== namespace) return
     this.namespaces.delete(name)
     await namespace.dispose()
   }
@@ -529,9 +528,93 @@ type InvokeRemote = (
   args: readonly unknown[],
 ) => Promise<RemoteResult<unknown>> | AsyncIterable<unknown>
 
+/**
+ * The mounted methods of one namespace. Their records live here rather than on
+ * the namespace service because that service is published to plugin code: a
+ * method a namespace calls `remove` or `has` must not be shadowed by, and must
+ * not shadow, the machinery that installs it.
+ */
+class RemoteMethodTable {
+  private readonly records = new Map<string, RemoteMethodRecord>()
+
+  constructor(
+    private readonly namespace: string,
+    /** Read lazily: the service constructor hands over a table before it exists. */
+    private readonly service: () => RemoteNamespaceService,
+  ) {}
+
+  /**
+   * Refuse a name the service already answers to. The class's own names are
+   * reserved wholesale; a name only this table published is not, or a variant
+   * would refuse the accessor its sibling installed.
+   * @param method - Published method name.
+   */
+  assertPublishable(method: string): void {
+    RemoteNamespaceService.assertMethodAvailable(this.namespace, method)
+    if (method in this.service() && !this.records.has(method)) {
+      throw new Error(`client api: method ${JSON.stringify(`${this.namespace}/${method}`)} conflicts with its namespace service`)
+    }
+  }
+
+  isEmpty(): boolean {
+    return this.records.size === 0
+  }
+
+  isMounted(kind: 'direct' | 'scoped', method: string): boolean {
+    return this.records.get(method)?.[kind] !== undefined
+  }
+
+  /** Install one variant, refusing a name the namespace service reserves. */
+  install(method: string, kind: 'direct', value: DirectMethod): void
+  install(method: string, kind: 'scoped', value: ScopedMethod): void
+  install(method: string, kind: 'direct' | 'scoped', value: DirectMethod | ScopedMethod): void {
+    this.assertPublishable(method)
+    const existing = this.records.get(method)
+    const record: RemoteMethodRecord = existing ?? {}
+    if (kind === 'direct') record.direct = value
+    else record.scoped = value as ScopedMethod
+    if (existing !== undefined) return
+    this.records.set(method, record)
+    // One accessor per name, however many variants carry it. Its `this` is the
+    // namespace service, which reads the caller Context through the service's
+    // own `ctx`; the table supplies only which variants are live, so it keeps
+    // its own reference to the table.
+    // oxlint-disable-next-line typescript/no-this-alias -- the getter's receiver
+    const table = this
+    Object.defineProperty(this.service(), method, {
+      configurable: true,
+      enumerable: true,
+      get: function (this: RemoteNamespaceService): (...args: unknown[]) => unknown {
+        const callerCtx = this.ctx
+        const current = table.records.get(method)
+        const direct = current?.direct
+        const scoped = current?.scoped
+        return (...args: unknown[]) => this.invokeRemote(direct, scoped, callerCtx, args)
+      },
+    })
+  }
+
+  /**
+   * Withdraw one variant, unpublishing the name with its last one.
+   * @param kind - Installed variant to remove.
+   * @param method - Published method name.
+   * @param token - Mount that installed the variant; a stale token is ignored.
+   */
+  withdraw(kind: 'direct' | 'scoped', method: string, token: MountToken): void {
+    const record = this.records.get(method)
+    const current = record?.[kind]
+    /* v8 ignore next -- duplicate live variants are rejected before installation, so no newer token can replace this one. */
+    if (record === undefined || current?.token !== token) return
+    if (kind === 'direct') delete record.direct
+    else delete record.scoped
+    if (record.direct !== undefined || record.scoped !== undefined) return
+    this.records.delete(method)
+    Reflect.deleteProperty(this.service(), method)
+  }
+}
+
 class RemoteNamespaceService extends Service {
-  private readonly methods = new Map<string, RemoteMethodRecord>()
-  private readonly namespace: string
+  readonly methods: RemoteMethodTable
 
   static assertMethodAvailable(namespace: string, method: string): void {
     if (REMOTE_NAMESPACE_FIELDS.has(method) || method in RemoteNamespaceService.prototype) {
@@ -542,72 +625,19 @@ class RemoteNamespaceService extends Service {
   constructor(
     ctx: Context,
     name: string,
-    private readonly invokeRemote: InvokeRemote,
+    /** Read by the published accessors, which the method table defines. */
+    readonly invokeRemote: InvokeRemote,
   ) {
     super(ctx, remoteServiceKey(name))
-    this.namespace = name
-  }
-
-  assertMethodAvailable(method: string): void {
-    RemoteNamespaceService.assertMethodAvailable(this.namespace, method)
-    if (method in this && !this.methods.has(method)) {
-      throw new Error(`client api: method ${JSON.stringify(`${this.namespace}/${method}`)} conflicts with its namespace service`)
-    }
-  }
-
-  get empty(): boolean {
-    return this.methods.size === 0
-  }
-
-  has(kind: 'direct' | 'scoped', method: string): boolean {
-    return this.methods.get(method)?.[kind] !== undefined
+    this.methods = new RemoteMethodTable(name, () => this)
   }
 
   installDirect(descriptor: InvocationDescriptor, token: MountToken): void {
-    this.install(descriptor.method, 'direct', { descriptor, token })
+    this.methods.install(descriptor.method, 'direct', { descriptor, token })
   }
 
   installScoped(descriptor: InvocationDescriptor, projection: ScopedProjection, token: MountToken): void {
-    this.install(descriptor.method, 'scoped', { descriptor, projection, token })
-  }
-
-  private install(method: string, kind: 'direct', value: DirectMethod): void
-  private install(method: string, kind: 'scoped', value: ScopedMethod): void
-  private install(method: string, kind: 'direct' | 'scoped', value: DirectMethod | ScopedMethod): void {
-    this.assertMethodAvailable(method)
-    let record = this.methods.get(method)
-    const fresh = record === undefined
-    record ??= {}
-    if (fresh) {
-      Object.defineProperty(this, method, {
-        configurable: true,
-        enumerable: true,
-        get: function (this: RemoteNamespaceService): (...args: unknown[]) => unknown {
-          const callerCtx = this.ctx
-          const current = this.methods.get(method)
-          const direct = current?.direct
-          const scoped = current?.scoped
-          return (...args: unknown[]) => {
-            return this.invokeRemote(direct, scoped, callerCtx, args)
-          }
-        },
-      })
-      this.methods.set(method, record)
-    }
-    if (kind === 'direct') record.direct = value
-    else record.scoped = value as ScopedMethod
-  }
-
-  remove(kind: 'direct' | 'scoped', method: string, token: MountToken): void {
-    const record = this.methods.get(method)
-    const current = record?.[kind]
-    /* v8 ignore next -- duplicate live variants are rejected before installation, so no newer token can replace this one. */
-    if (record === undefined || current?.token !== token) return
-    if (kind === 'direct') delete record.direct
-    else delete record.scoped
-    if (record.direct !== undefined || record.scoped !== undefined) return
-    this.methods.delete(method)
-    Reflect.deleteProperty(this, method)
+    this.methods.install(descriptor.method, 'scoped', { descriptor, projection, token })
   }
 }
 
@@ -646,8 +676,8 @@ function installMethods(
     for (const method of [...installed].reverse()) {
       method.token.active = false
       method.token.abort.abort()
-      if (method.scoped) service.remove('scoped', method.descriptor.method, method.token)
-      if (method.direct) service.remove('direct', method.descriptor.method, method.token)
+      if (method.scoped) service.methods.withdraw('scoped', method.descriptor.method, method.token)
+      if (method.direct) service.methods.withdraw('direct', method.descriptor.method, method.token)
     }
     throw error
   }

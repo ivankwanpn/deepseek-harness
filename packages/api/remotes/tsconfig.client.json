@@ -45,6 +45,9 @@
       "path": "../../host/plugin-inventory"
     },
     {
+      "path": "../../host/plugin-marketplace"
+    },
+    {
       "path": "../../interaction/commands"
     },
     {
@@ -55,6 +58,9 @@
     },
     {
       "path": "../../settings/settings"
+    },
+    {
+      "path": "../../skill/skill"
     },
     {
       "path": "../../subagent/subagent"

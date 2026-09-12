@@ -26,7 +26,7 @@ When an `Events` member reaches a Host-only symbol such as a Service, `Agent`, o
 
 All allowlisted events use this path, and dedicated frames and Client aliases are removed. Model consumers subscribe directly to `llm/adapters-updated` and `settings/document-updated`; preset consumers subscribe to `agent-preset/selected`; stateless Session and dynamic-Cordis notifications use `emit`; Approval and Question use Agent-scoped `waterfall`. Data that needs a baseline, projection, or deduplication retains a dedicated Remote stream.
 
-`skills/change`, `tools/change`, and `system-prompt/change` have the same pure invalidation form but no shipped consumer. The rule that every abstraction needs a current owner and need keeps them outside the allowlist; they remain only an extension point recorded here.
+`tools/change` and `system-prompt/change` have the same pure invalidation form but no shipped consumer. The rule that every abstraction needs a current owner and need keeps them outside the allowlist; they remain only an extension point recorded here. `skills/change` entered the allowlist once the `/` menu's session-keyed catalog cache became its consumer.
 
 ### Consumer contract (`dsh-typert-protocol`)
 
@@ -107,7 +107,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 }
 ```
 
-Adding an event is therefore one array entry: type projection, the `$on` key set, Host dispatch mode, and the forwarding loop all derive from it. `ctx.remote.$on('slots/changed', …)` for a Client-local event and `$on('skills/change', …)` for a declared but unselected event are compile errors.
+Adding an event is therefore one array entry: type projection, the `$on` key set, Host dispatch mode, and the forwarding loop all derive from it. An entry judges a *declared* signature, so the owner package must carry the declaration in a client-safe face both compiler faces read — an event those faces cannot see is not a forwardable event, and the assertion refuses it. `ctx.remote.$on('slots/changed', …)` for a Client-local event and `$on('tools/change', …)` for a declared but unselected event are compile errors.
 
 The declaration's trailing `satisfies` applies Host event-vocabulary and mode constraints to the same allowlist:
 
@@ -178,7 +178,7 @@ The few required Client symbols are mirrored on the test side: `scaffold.ts` exp
 ## Verification
 
 - A real Host-source composition test proves that two Client streams each receive `{ event, args }`, disconnecting one does not affect the other, and non-JSON arguments fail loudly without poisoning later valid delivery.
-- Type negatives reject unselected events, non-`void` unscoped events, non-Agent-scoped waterfalls, and allowlist modes that disagree with signatures. `$on('slots/changed', …)` and `$on('skills/change', …)` both fail to compile, so `$on`'s key set equals the allowlist.
+- Type negatives reject unselected events, non-`void` unscoped events, non-Agent-scoped waterfalls, and allowlist modes that disagree with signatures. `$on('slots/changed', …)` and `$on('tools/change', …)` both fail to compile, so `$on`'s key set equals the allowlist.
 - Consumer `$on('settings/document-updated', …)` resolves `ns` as `SettingsNamespace`, preserving the brand across the wire.
 - A `$on` disposer belongs to the calling fiber, and registering the same function object twice produces independently removable registrations; subscriptions are addressed by registration rather than listener identity.
 - Ordinary notifications contain both a throwing listener and a listener returning a rejected Promise. Waterfall tests pin Client result, `next()`, rejection, cancellation, first claim across multiple Clients, and reconnect replay of a pending request.
