@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Parses a Claude-compatible `marketplace.json`, fetches one plugin at its pinned commit, and reconciles it into DSH without teaching the core the external schema: every skill a plugin ships is materialized FLAT into the discovery root, and each `.mcp.json` server becomes one loader row. Enablement is one verb over two mechanisms — a row's `disabled` flag, and moving skills out of the discovery tree. Every write is limited to entries the marketplace owns, so a user's own patches and skills are never rewritten.
+Parses a Claude-compatible `marketplace.json`, fetches one plugin at its pinned commit, and reconciles it into DSH without teaching the core the external schema: every skill a plugin ships is materialized FLAT into the discovery root, and each `.mcp.json` server becomes one loader row. Enablement is one verb over two mechanisms — a row's `disabled` flag, and moving skills out of the discovery tree. Every write is limited to entries the marketplace owns, so user patches and skills are never rewritten; the CLI and the Web settings panel drive those writes through one shared implementation.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ Parses a Claude-compatible `marketplace.json`, fetches one plugin at its pinned 
 <a id="use-this-package"></a>
 ## Use this package
 
-Call this package when a user asks DSH to install something from a plugin marketplace. The CLI face is `dsh plugin marketplace <add|list|search|install|uninstall|installed|enable|disable>`; the programmatic face is `installPlugin`, `sync`, and `setEnabled`.
+Call this package when a user asks DSH to install something from a plugin marketplace. The CLI face is `dsh plugin marketplace <add|list|search|install|uninstall|installed|enable|disable>`; the programmatic face is `installPlugin`, `sync`, and `setEnabled`; the Remote face is `MarketplaceGateway`, whose `marketplace.status` read and `marketplace.setEnabled` / `marketplace.uninstall` writes back the Web settings panel.
 
 ```ts
 import { defaultStatePath, installPlugin, loadState } from '@deepseek-ai/dsh-host-plugin-marketplace'
@@ -74,6 +74,20 @@ A row id is **not** a function of the plugin name: an MCP row is keyed on the sa
 
 Because the root is flat, two plugins that ship a skill entry of the same name are a real conflict. The first entry in state order keeps the name and the second is reported instead of overwriting it, so neither plugin can silently replace the other's skill or delete it on uninstall.
 
+Two cleanup functions split by what they may delete. `removeMaterializedSkills` removes only the entry names it is given, live or parked, and is what a sync uses to drop a name a plugin stopped shipping. `removePluginSkills` is uninstall's wider cleanup: those same names plus the parking directory and the plugin-scoped container an earlier layout wrote. The split is load-bearing because the parking directory is a DISABLED plugin's only copy of its skills, so folding it into the sync path deletes them the first time a stale name is dropped.
+
+### The Remote face
+
+The Web settings panel talks to `MarketplaceGateway` (Remote namespace `marketplace`): `marketplace.status` reads, and `marketplace.setEnabled` and `marketplace.uninstall` write. Three rules hold across it.
+
+**Reads never write.** `marketplace.status` resolves ownership from the state record and the plugin's own `skills/` directory, and enablement from the patch layer. It does not materialize, so opening a settings tab cannot copy or move anything on the user's disk.
+
+**A deployment decides whether writes exist.** The `allowMutations` config field (default `true`) is checked in the write path itself. The panel reads the same flag from the status snapshot and renders no controls when it is false, but the flag is enforced on every call: a hidden button is never the enforcement point.
+
+**One implementation per operation.** Both faces call `setPluginEnabled` in `src/operations.ts`, so the CLI and the panel cannot disagree about which rows and discovery-root entries a plugin owns. Each write also returns the status it produced, so the panel renders post-write truth rather than issuing a second read that could race the write it just made.
+
+The status view reports two facts per installed plugin that the patch layer cannot answer. `skillIds` names the discovery-root entries the plugin owns, and `skills` says where they are: `live` in the discovery root, `parked` under `<root>/.disabled/<plugin>/`, or `none` when the plugin ships no discoverable skill. Skills mount by discovery rather than by a row, so their placement has no patch-layer representation at all.
+
 ### Sources that point inside the marketplace
 
 A manifest entry may name its content relative to the marketplace repository (`./plugins/foo`), which measured at 52 of the official registry's 294 entries. That path is resolved against the repository the manifest was read from, not the process working directory.
@@ -89,11 +103,13 @@ None of those entries declares a `sha`, so the pin rule still declines them by d
 | `src/git.ts` | pinned fetch (`execFile`, argv only — never a shell) and capability detection |
 | `src/state.ts` | the installed record |
 | `src/patch-layer.ts` | composing rows into the user patch layer; the only writer |
-| `src/materialize.ts` | capability → surface mapping, including MCP normalization |
+| `src/materialize.ts` | capability → surface mapping: MCP normalization, flat skill materialization, and the ownership-aware cleanup |
+| `src/operations.ts` | the write operations the CLI and the Remote face share |
+| `src/gateway.ts` | the Remote face: one status read and two gated write verbs |
 | `src/sync.ts` | state → materialize → patch layer |
 | `src/install.ts` | resolve → fetch → record → sync |
 | `src/marketplace-command.ts` | the CLI face |
-| — | No runtime invariant companion is published; this package owns no durable event stream, and its two writer surfaces (the state file and the patch layer) are each guarded by a re-parse before write. |
+| — | No runtime invariant companion is published; this package owns no durable event stream, and its three writer surfaces (the state file, the patch layer, and the discovery root) are each derived from a re-read of its inputs before the write. |
 
 ## Further Exploration
 
@@ -141,6 +157,7 @@ Stable while the enabled server set is unchanged. Adding or removing a server ch
 - **An unpinned entry needs an explicit opt-in.** 52 of the 294 official entries name their content relative to the marketplace repository and none of them carries a `sha`. The path is resolved against that repository, and the pin rule still declines the install unless `--allow-unpinned` is passed — which resolves the source's ref to the commit it names *now* and records that. The install is then one specific revision and can be held to it, but it is a snapshot of a ref, not a guarantee the next install matches. Entries pinned to a moving ref are unaffected either way.
 - **The manifest fetch is GitHub-shaped.** A repository url is resolved to its `raw/main` manifest; another host needs an explicit manifest url.
 - **A skill entry must be discoverable at the top of the plugin's `skills/` directory.** An entry that is a directory without `SKILL.md`, or a file that is not Markdown, is reported and skipped instead of copied: `skill-filesystem` reads exactly one level, so copying it into the discovery root would produce a file the model is never offered.
+- **The Remote face manages installed plugins; it cannot install one.** Adding and searching happen on the CLI. An install resolves a source, fetches it, pins a revision, and reports the pin — a progress and partial-failure story that a single request and response does not carry.
 - **Comment preservation is best-effort.** A patch-layer write re-serializes the file, and a full dump cannot keep the user's comments. Writes happen only when the composed rows actually change, and change detection is canonicalized so key order alone never triggers one.
 
 ### Dev Note

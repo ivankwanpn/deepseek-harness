@@ -6,13 +6,14 @@
  * mutates the disk. The second is the one that would be easiest to regress by
  * "simplifying" the read to reuse the materializer.
  */
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { remoteMethods, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import MarketplaceGateway from '../src/gateway.ts'
+import { disabledSkillsDir, materializeEntry, skillsRootDir } from '../src/materialize.ts'
 import { serializePatchLayer } from '../src/patch-layer.ts'
 import { emptyState, rowIdFor, saveState, type InstalledEntry } from '../src/state.ts'
 import type { MarketplaceStatusView } from '../src/types.ts'
@@ -40,12 +41,13 @@ function pluginWithServer(name: string, serverName: string): string {
 }
 
 /** Mount the gateway against the scratch harness home. */
-async function harness(): Promise<{ ctx: Context; gateway: MarketplaceGateway }> {
+async function harness(config: { allowMutations?: boolean } = {}): Promise<{ ctx: Context; gateway: MarketplaceGateway }> {
   const ctx = new Context()
   const gateway = new MarketplaceGateway(ctx, {
     harnessHome: scratch,
     statePath: join(scratch, 'marketplace', 'state.json'),
     patchLayerPath: join(scratch, 'cordis.patch.yml'),
+    ...config,
   })
   return { ctx, gateway }
 }
@@ -78,13 +80,17 @@ function snapshotTree(root: string): string[] {
 }
 
 describe('marketplace Remote face', () => {
-  it('publishes one direct status method under the marketplace namespace', async () => {
+  it('publishes the status read and the two write verbs under the marketplace namespace', async () => {
     const { gateway } = await harness()
     expect(gateway.typertRemote).toMatchObject({
       serviceKey: 'marketplace',
       namespace: 'marketplace',
     })
-    expect(remoteMethods(gateway)).toEqual([{ method: 'status', invocation: { kind: 'direct' } }])
+    expect(remoteMethods(gateway)).toEqual([
+      { method: 'status', invocation: { kind: 'direct' } },
+      { method: 'setEnabled', invocation: { kind: 'direct' } },
+      { method: 'uninstall', invocation: { kind: 'direct' } },
+    ])
     // The generated client face is what the panel compiles against.
     const remote = gateway.typertRemote as unknown as { methods?: unknown }
     expect(remote).toBeDefined()
@@ -92,7 +98,7 @@ describe('marketplace Remote face', () => {
 
   it('reports an empty marketplace when no state file exists yet', async () => {
     const { gateway } = await harness()
-    await expect(statusOf(gateway)).resolves.toEqual({ marketplaces: [], installed: [] })
+    await expect(statusOf(gateway)).resolves.toEqual({ marketplaces: [], installed: [], allowMutations: true })
   })
 
   it('joins the state record with the live patch layer for enablement', async () => {
@@ -239,5 +245,146 @@ describe('marketplace Remote face', () => {
   })
 })
 
-// Referenced so the RemoteResult import documents the shape the panel unwraps.
-export type _RemoteResultCheck = RemoteResult<MarketplaceStatusView>
+describe('marketplace write face', () => {
+  /**
+   * Install one skills-only plugin the way an install does: content on disk,
+   * entries materialized into the discovery root, ownership recorded.
+   *
+   * @param plugin - plugin and directory name.
+   * @param skill - the single skill it ships.
+   * @returns the installed record that was saved.
+   */
+  function installSkillsPlugin(plugin: string, skill: string): InstalledEntry {
+    const installPath = join(scratch, 'plugins', plugin)
+    mkdirSync(join(installPath, 'skills', skill), { recursive: true })
+    writeFileSync(
+      join(installPath, 'skills', skill, 'SKILL.md'),
+      `---\nname: ${skill}\ndescription: Fixture.\n---\n\nBody.\n`,
+      'utf8',
+    )
+    const entry: InstalledEntry = {
+      id: rowIdFor(plugin),
+      marketplace: 'official',
+      plugin,
+      sourceUrl: 'https://example.test/plugin.git',
+      installPath,
+      skillIds: [skill],
+      capabilities: ['skills'],
+      installedAt: new Date(0).toISOString(),
+    }
+    materializeEntry(entry, { harnessHome: scratch })
+    saveState(join(scratch, 'marketplace', 'state.json'), { ...emptyState(), installed: [entry] })
+    return entry
+  }
+
+  it('reports where a skills-only plugin\u2019s entries are, then parks and restores them', async () => {
+    const { gateway } = await harness()
+    installSkillsPlugin('superpowers', 'brainstorming')
+    expect((await statusOf(gateway)).installed[0]).toMatchObject({
+      plugin: 'superpowers',
+      state: 'no-rows',
+      skillIds: ['brainstorming'],
+      skills: 'live',
+    })
+
+    const disabled = await gateway.setEnabled({ plugin: 'superpowers', enabled: false })
+    expect(disabled).toMatchObject({ plugin: 'superpowers', rowsChanged: 0, skillsMoved: true, alreadyInState: false })
+    expect(disabled.status.installed[0]?.skills).toBe('parked')
+    expect(existsSync(join(skillsRootDir({ harnessHome: scratch }), 'brainstorming'))).toBe(false)
+    expect(existsSync(join(disabledSkillsDir({ harnessHome: scratch }, 'superpowers'), 'brainstorming'))).toBe(true)
+
+    // Enabling back moves them without a re-fetch, and the returned status says
+    // so: the panel never has to guess what the write did.
+    const enabled = await gateway.setEnabled({ plugin: 'superpowers', enabled: true })
+    expect(enabled.skillsMoved).toBe(true)
+    expect(enabled.status.installed[0]?.skills).toBe('live')
+    expect(existsSync(join(skillsRootDir({ harnessHome: scratch }), 'brainstorming'))).toBe(true)
+  })
+
+  it('reports a plugin that mounts nothing instead of pretending a toggle applied', async () => {
+    const { gateway } = await harness()
+    const installPath = join(scratch, 'plugins', 'inert')
+    mkdirSync(join(installPath, 'commands'), { recursive: true })
+    saveState(join(scratch, 'marketplace', 'state.json'), {
+      ...emptyState(),
+      installed: [{
+        id: rowIdFor('inert'),
+        marketplace: 'official',
+        plugin: 'inert',
+        sourceUrl: 'https://example.test/inert.git',
+        installPath,
+        capabilities: ['commands'],
+        installedAt: new Date(0).toISOString(),
+      }],
+    })
+
+    await expect(gateway.setEnabled({ plugin: 'inert', enabled: false })).resolves.toMatchObject({
+      mountsNothing: true,
+      alreadyInState: true,
+      rowsChanged: 0,
+      skillsMoved: false,
+    })
+  })
+
+  it('uninstalls content, materialized skills and the record in one call', async () => {
+    const { gateway } = await harness()
+    const entry = installSkillsPlugin('removable', 'solo')
+
+    const result = await gateway.uninstall({ plugin: 'removable' })
+
+    expect(result.removed).toBe(true)
+    expect(result.status.installed).toEqual([])
+    expect(existsSync(entry.installPath)).toBe(false)
+    // Skills live in the shared root, not under installPath: leaving them there
+    // is how a removed plugin keeps being offered to the model.
+    expect(existsSync(join(skillsRootDir({ harnessHome: scratch }), 'solo'))).toBe(false)
+    await expect(gateway.uninstall({ plugin: 'removed' })).resolves.toMatchObject({ removed: false })
+  })
+
+  it('announces a skills move so live clients repull the command list', async () => {
+    const { ctx, gateway } = await harness()
+    installSkillsPlugin('announcer', 'demo')
+    let changes = 0
+    ctx.on('commands/change', () => { changes += 1 })
+
+    // `/` lists user-invocable skills through `command.list`, but the
+    // `commands/change` notification belongs to the commands registry, which
+    // cannot see this plugin's files move. Without it a browser keeps serving
+    // the catalog it fetched before the write.
+    await gateway.setEnabled({ plugin: 'announcer', enabled: false })
+    expect(changes).toBe(1)
+
+    // Nothing moved: making every live client repull would be a false signal.
+    await gateway.setEnabled({ plugin: 'announcer', enabled: false })
+    expect(changes).toBe(1)
+
+    await gateway.setEnabled({ plugin: 'announcer', enabled: true })
+    expect(changes).toBe(2)
+
+    // Uninstall takes the skills away too.
+    await gateway.uninstall({ plugin: 'announcer' })
+    expect(changes).toBe(3)
+  })
+
+  it('refuses every write when the deployment serves the panel read-only', async () => {
+    const { gateway } = await harness({ allowMutations: false })
+    installSkillsPlugin('superpowers', 'brainstorming')
+
+    // The read still reports the fact, so the panel can explain itself; the
+    // check itself lives in the write path, not in the panel.
+    expect((await statusOf(gateway)).allowMutations).toBe(false)
+    await expect(gateway.setEnabled({ plugin: 'superpowers', enabled: false }))
+      .rejects.toThrow(/read-only/u)
+    await expect(gateway.uninstall({ plugin: 'superpowers' })).rejects.toThrow(/read-only/u)
+    expect(existsSync(join(skillsRootDir({ harnessHome: scratch }), 'brainstorming'))).toBe(true)
+  })
+
+  it('refuses an unknown plugin and a malformed request', async () => {
+    const { gateway } = await harness()
+
+    await expect(gateway.setEnabled({ plugin: 'ghost', enabled: true })).rejects.toThrow(/not installed/u)
+    await expect(gateway.setEnabled({ plugin: '  ', enabled: true })).rejects.toThrow(/non-blank plugin name/u)
+    await expect(gateway.setEnabled({ plugin: 'ghost', enabled: 'yes' as never })).rejects.toThrow(/boolean enabled/u)
+    await expect(gateway.uninstall({ plugin: '' })).rejects.toThrow(/non-blank plugin name/u)
+  })
+})

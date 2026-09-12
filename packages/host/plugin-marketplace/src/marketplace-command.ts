@@ -17,7 +17,7 @@ import { addMarketplace, installPlugin, uninstallPlugin } from './install.ts'
 // Both are needed: `add` takes a repo-or-url and must resolve it, while every
 // later command reads a url that `add` already resolved to a manifest.
 import { fetchMarketplace, fetchMarketplaceFrom } from './fetch.ts'
-import { parsePatchLayer, readEnabled, setEnabled } from './patch-layer.ts'
+import { parsePatchLayer, readEnabled } from './patch-layer.ts'
 import {
   defaultStatePath,
   emptyState,
@@ -25,17 +25,11 @@ import {
   loadState,
   rowIdFor,
   saveState,
-  type InstalledEntry,
   type MarketplaceState,
 } from './state.ts'
 import type { SyncOptions } from './sync.ts'
-import {
-  defaultAgentsSkillsDir,
-  materializeEntry,
-  setSkillsEnabled,
-  skillsEnabled,
-  type MaterializeOptions,
-} from './materialize.ts'
+import { defaultAgentsSkillsDir } from './materialize.ts'
+import { ownedBy, setPluginEnabled } from './operations.ts'
 
 const NAME = 'dsh'
 
@@ -94,59 +88,6 @@ function context(): Context {
         agentsSkillsDir: defaultAgentsSkillsDir(harnessHome),
       },
     },
-  }
-}
-
-/**
- * The patch rows one installed plugin owns.
- *
- * Read from the record when present. A state file written before `rowIds`
- * existed has none, so the entry is materialized to recover them — that reads
- * only the plugin directory already on disk, and the next sync persists the
- * result. Falling back to `marketplace:<plugin>` is deliberately NOT done: that
- * id matches no row this package writes, so it would silently toggle nothing
- * while reporting success.
- *
- * @param entry - the installed record to find rows for.
- * @param options - where the entry's content lives, so an unannotated record
- * can be materialized.
- * @returns every row id the plugin owns; empty when it mounts no loader row.
- */
-function ownedRowIds(entry: InstalledEntry, options: MaterializeOptions): string[] {
-  if (entry.rowIds !== undefined) return entry.rowIds
-  try {
-    return materializeEntry(entry, options).rowIds
-  } catch {
-    // A missing or unreadable plugin directory is reported by the sync that
-    // follows; here it just means no rows can be named.
-    return []
-  }
-}
-
-/**
- * The discovery-root entries one installed plugin owns.
- *
- * Read from the record when present, for the same reason as `ownedRowIds`: one
- * plugin materializes SEVERAL entries, named after its own `skills/` children,
- * so a caller that recomputed them from the plugin name would move entries that
- * do not exist and report a toggle that never happened. A record written before
- * `skillIds` existed has none, so the entry is materialized to recover them, and
- * the next sync persists the result.
- *
- * @param entry - the installed record to find skills for.
- * @param options - where the entry's content lives, so an unannotated record can
- * be materialized.
- * @returns every discovery-root entry name the plugin owns; empty when it ships
- * no discoverable skill.
- */
-function ownedSkillIds(entry: InstalledEntry, options: MaterializeOptions): string[] {
-  if (entry.skillIds !== undefined) return entry.skillIds
-  try {
-    return materializeEntry(entry, options).skillIds
-  } catch {
-    // A missing or unreadable plugin directory is reported by the sync that
-    // follows; here it just means no skills can be named.
-    return []
   }
 }
 
@@ -299,7 +240,7 @@ export async function runMarketplace(args: readonly string[]): Promise<number> {
       // Read the patch layer once: enablement lives there, never in state.
       const layer = parsePatchLayer(ctx.sync.patchLayerPath)
       for (const entry of ctx.state.installed) {
-        const rowIds = ownedRowIds(entry, ctx.sync.materialize)
+        const rowIds = ownedBy(entry, ctx.sync.materialize).rowIds
         const states = rowIds.map(id => readEnabled(layer.patches, id))
         const mount = states.length === 0
           ? 'no-rows'
@@ -328,29 +269,19 @@ export async function runMarketplace(args: readonly string[]): Promise<number> {
       }
       const want = command === 'enable'
 
-      // Two mechanisms, one verb. Loader rows are toggled by their `disabled`
-      // flag; skills have no row, so they are moved out of (or back into) the
-      // discovery tree. Doing only the row left skills-only plugins with no way
-      // to be turned off at all, which is what the user asked for.
-      //
-      // A plugin owns one row PER MCP SERVER, and those ids are keyed on the
-      // sanitized server name, so every one of them has to be toggled. Addressing
-      // a recomputed `marketplace:<plugin>` matched no row, wrote nothing, and
-      // still reported success.
-      const rowIds = ownedRowIds(entry, ctx.sync.materialize)
-      const skillIds = ownedSkillIds(entry, ctx.sync.materialize)
-      let rowsWritten = 0
-      for (const id of rowIds) {
-        if (setEnabled(ctx.sync.patchLayerPath, id, want)) rowsWritten += 1
+      // Two mechanisms, one verb, and ONE implementation of it: the same call
+      // the Web panel makes, so a plugin toggled from either face ends up in the
+      // same state. See operations.ts for why neither face resolves ownership
+      // itself.
+      const result = setPluginEnabled(entry, want, {
+        patchLayerPath: ctx.sync.patchLayerPath,
+        materialize: ctx.sync.materialize,
+      })
+      if (result.mountsNothing) {
+        process.stderr.write(`${NAME}: ${plugin} mounts nothing (no runtime row and no skills)\n`)
+        return 1
       }
-      const skillsMoved = setSkillsEnabled(ctx.sync.materialize, plugin, skillIds, want)
-
-      if (rowsWritten === 0 && !skillsMoved) {
-        const mounted = skillsEnabled(ctx.sync.materialize, plugin, skillIds)
-        if (mounted === undefined && rowIds.length === 0) {
-          process.stderr.write(`${NAME}: ${plugin} mounts nothing (no runtime row and no skills)\n`)
-          return 1
-        }
+      if (result.alreadyInState) {
         // Already in the requested state; report success rather than an error,
         // because the desired end state holds.
         process.stdout.write(`${plugin} is already ${command === 'enable' ? 'enabled' : 'disabled'}\n`)
@@ -358,8 +289,8 @@ export async function runMarketplace(args: readonly string[]): Promise<number> {
       }
 
       const parts: string[] = []
-      if (rowsWritten > 0) parts.push(`${String(rowsWritten)} runtime row(s)`)
-      if (skillsMoved) parts.push('skills')
+      if (result.rowsChanged > 0) parts.push(`${String(result.rowsChanged)} runtime row(s)`)
+      if (result.skillsMoved) parts.push('skills')
       process.stdout.write(`${command === 'enable' ? 'enabled' : 'disabled'} ${plugin} (${parts.join(', ')})\n`)
       return 0
     }

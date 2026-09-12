@@ -18,7 +18,7 @@ import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { fetchMarketplace, marketplaceRepoRoot, resolveLocalSource, type FetchOptions } from './fetch.ts'
 import { detectCapabilities, fetchPlugin, resolveRefSha } from './git.ts'
-import { removeMaterializedSkills, skillEntryNames } from './materialize.ts'
+import { removePluginSkills, skillEntryNames } from './materialize.ts'
 import type { MarketplaceEntry } from './parse.ts'
 import { isPinned } from './parse.ts'
 import { sync, type SyncOptions, type SyncResult } from './sync.ts'
@@ -318,7 +318,7 @@ export function uninstallPlugin(
   // from. Read the names while the content is still there, so a record written
   // before `skillIds` existed still cleans up.
   const skillIds = existing.skillIds ?? skillEntryNames(existing.installPath).names
-  removeMaterializedSkills(options.sync.materialize, plugin, skillIds)
+  removePluginSkills(options.sync.materialize, plugin, skillIds)
   // Delete content BEFORE dropping the record: a record without content is a
   // broken mount, while content without a record is merely an orphan directory.
   if (existsSync(existing.installPath)) rmSync(existing.installPath, { recursive: true, force: true })

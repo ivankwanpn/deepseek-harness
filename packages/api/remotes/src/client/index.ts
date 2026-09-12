@@ -26,6 +26,9 @@ export type {
   InstalledStateView,
   MarketplaceRegistrationView,
   MarketplaceStatusView,
+  PluginEnablementView,
+  PluginRemovalView,
+  SkillsStateView,
 } from '@deepseek-ai/dsh-host-plugin-marketplace/types'
 export type {} from '@deepseek-ai/dsh-agent-presets/remote'
 export type {} from '@deepseek-ai/dsh-commands/remote'
@@ -59,6 +62,7 @@ export type {} from '@deepseek-ai/dsh-credentials/types'
 export type {} from '@deepseek-ai/dsh-llm/types'
 export type {} from '@deepseek-ai/dsh-agent-presets/types'
 export type {} from '@deepseek-ai/dsh-settings/types'
+export type {} from '@deepseek-ai/dsh-skill/types'
 export type {} from '@deepseek-ai/dsh-user-approval/types'
 export type {} from '@deepseek-ai/dsh-user-questions/types'
 export type {} from '@deepseek-ai/dsh-api-session-controller/types'

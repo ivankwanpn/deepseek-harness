@@ -102,6 +102,7 @@ export {
   normalizeMcpServers,
   readPluginMcp,
   removeMaterializedSkills,
+  removePluginSkills,
   sanitizeServerName,
   setSkillsEnabled,
   skillEntryNames,
@@ -113,6 +114,14 @@ export {
 } from './materialize.ts'
 
 export { sync, type SyncOptions, type SyncResult } from './sync.ts'
+
+export {
+  ownedBy,
+  setPluginEnabled,
+  type EnablementOptions,
+  type EnablementResult,
+  type Ownership,
+} from './operations.ts'
 
 export {
   InstallError,

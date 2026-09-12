@@ -132,6 +132,14 @@ describe('Remote event Host source', () => {
       value: { event: 'commands/change', args: [] },
     })
 
+    // The skill registry's invalidation carries no payload, so a client that
+    // receives it can only drop every catalog it derived.
+    emitRaw(ctx, 'skills/change', [])
+    await expect(second.next()).resolves.toEqual({
+      done: false,
+      value: { event: 'skills/change', args: [] },
+    })
+
     const secondDone = second.next()
     secondAbort.abort(new Error('second Client disconnected'))
     await expect(secondDone).resolves.toEqual({ done: true, value: undefined })

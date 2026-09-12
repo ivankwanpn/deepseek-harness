@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-settings-marketplace",
-  "description": "Read-only marketplace tab in Web Plugins settings: registered marketplaces and installed plugins with their live enablement",
+  "description": "Marketplace tab in Web Plugins settings: registered marketplaces, installed plugins with their live enablement, and the controls that enable, disable or uninstall one",
   "version": "0.1.5-rc.1",
   "publishConfig": {
     "access": "public"

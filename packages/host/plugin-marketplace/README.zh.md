@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-本包解析 Claude 兼容的 `marketplace.json`，按钉住的 commit 抓取一个插件，并在不让核心认识外部 schema 的前提下把它调和进 DSH：插件携带的每个 skill 都**平铺**落地到发现根目录，每个 `.mcp.json` 服务器成为一条 loader 行。启用是一个动词、两种机制——行上的 `disabled` 标志，以及把 skill 移出发现树。所有写入都只限于 marketplace 自己拥有的条目，因此用户自己的 patch 与 skill 永远不会被改写。
+本包解析 Claude 兼容的 `marketplace.json`，按钉住的 commit 抓取一个插件，并在不让核心认识外部 schema 的前提下把它调和进 DSH：插件携带的每个 skill 都**平铺**落地到发现根目录，每个 `.mcp.json` 服务器成为一条 loader 行。启用是一个动词、两种机制——行上的 `disabled` 标志，以及把 skill 移出发现树。所有写入都只限于 marketplace 自己拥有的条目，因此用户自己的 patch 与 skill 永远不会被改写。命令行与 Web 设置面板经由同一份共享实现驱动这些操作，而部署可以用 `allowMutations` 关掉面板的写入动词。
 
 ## 目录
 
@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-当用户要求 DSH 从插件 marketplace 安装东西时调用本包。CLI（命令行界面）面是 `dsh plugin marketplace <add|list|search|install|uninstall|installed|enable|disable>`；程序化面是 `installPlugin`、`sync` 与 `setEnabled`。
+当用户要求 DSH 从插件 marketplace 安装东西时调用本包。CLI（命令行界面）面是 `dsh plugin marketplace <add|list|search|install|uninstall|installed|enable|disable>`；程序化面是 `installPlugin`、`sync` 与 `setEnabled`；Remote 面是 `MarketplaceGateway`，它用 `marketplace.status` 读取、用 `marketplace.setEnabled` 与 `marketplace.uninstall` 写入，支撑 Web 设置面板。
 
 ```ts
 import { defaultStatePath, installPlugin, loadState } from '@deepseek-ai/dsh-host-plugin-marketplace'
@@ -75,6 +75,20 @@ skill 与 loader 行的行为差异足够大，把它们合并起来在两个方
 
 正因为根目录是平铺的，两个插件携带同名 skill 条目就是真实冲突。状态顺序中靠前的条目保留该名称，靠后的那个会被报告而非覆盖，因此任何一方都无法悄悄替换对方的 skill，或在卸载时删掉它。
 
+两个清理函数按「允许删什么」分工。`removeMaterializedSkills` 只删除传给它的那些条目名（存活态或停放态），sync 用它丢弃插件不再提供的名称。`removePluginSkills` 是卸载用的更宽清理：同样那些名称，加上停放目录与更早的布局所写的按插件隔离容器。这个分工是关键：停放目录是**已停用**插件唯一的 skill 副本，把它并进 sync 路径，会在第一次丢弃陈旧名称时就把它们删掉。
+
+### Remote 界面
+
+Web 设置面板与 `MarketplaceGateway`（Remote 命名空间 `marketplace`）通信：`marketplace.status` 读取，`marketplace.setEnabled` 与 `marketplace.uninstall` 写入。有三条规则贯穿其中。
+
+**读取永不写入。** `marketplace.status` 从状态记录与插件自己的 `skills/` 目录解析拥有关系，并从 patch 层解析启用状态。它不做落地，因此打开一个设置标签页不会在用户磁盘上复制或移动任何东西。
+
+**写入是否存在由部署决定。** `allowMutations` 组态栏位（预设 `true`）在写入路径本身检查。面板会从状态快照读到同一个旗标，并在其为 false 时不渲染任何控件，但该旗标在每次调用时都被强制执行：隐藏的按钮永远不是强制点。
+
+**每个操作只有一份实现。** 两个面都调用 `src/operations.ts` 的 `setPluginEnabled`，因此命令行与面板不可能对「该插件拥有哪些行与发现根目录条目」产生分歧。每次写入还会返回它产生的那份状态，因此面板渲染的是写入之后的事实，而不是再发一次可能与刚完成的写入竞争的读取。
+
+状态视图报告每个已安装插件的两项事实，而这两项 patch 层答不出来。`skillIds` 指名该插件拥有的发现根目录条目，`skills` 说明它们在哪：`live` 在发现根目录、`parked` 在 `<root>/.disabled/<plugin>/` 之下，或 `none` 表示该插件不提供任何可被发现的 skill。skill 靠发现挂载而非靠行，因此它的位置在 patch 层里根本没有对应表示。
+
 ### 指向 marketplace 内部的来源
 
 manifest 条目可以用相对于 marketplace 仓库的路径指名内容（`./plugins/foo`），这种做法在官方注册表的 294 个条目中实测有 52 个。该路径会对 manifest 被读取的那个仓库解析，而不是进程的工作目录。
@@ -90,11 +104,13 @@ manifest 条目可以用相对于 marketplace 仓库的路径指名内容（`./p
 | `src/git.ts` | 钉住版本的抓取（`execFile`，只传 argv——绝不用 shell）与能力检测 |
 | `src/state.ts` | 已安装记录 |
 | `src/patch-layer.ts` | 把行组合进用户 patch 层；唯一的写入方 |
-| `src/materialize.ts` | 能力 → 落地面的映射，含 MCP 规范化 |
+| `src/materialize.ts` | 能力 → 落地面的映射：MCP 规范化、skill 平铺落地，以及带拥有关系的清理 |
+| `src/operations.ts` | 命令行与 Remote 面共用的写入操作 |
+| `src/gateway.ts` | Remote 面：一次状态读取与两个受闸门的写入动词 |
 | `src/sync.ts` | 状态 → materialize → patch 层 |
 | `src/install.ts` | 解析 → 抓取 → 记录 → sync |
 | `src/marketplace-command.ts` | CLI 面 |
-| — | 不发布运行时不变式伴生入口；本包不拥有持久事件流，它的两个写入面（状态文件与 patch 层）各自以写入前的一次重新解析把关。 |
+| — | 不发布运行时不变式伴生入口；本包不拥有持久事件流，它的三个写入面（状态文件、patch 层与发现根目录）在写入前都由对各自输入的一次重新读取推导而来。 |
 
 <a id="further-exploration"></a>
 ## 进一步探索
@@ -146,6 +162,7 @@ manifest 条目可以用相对于 marketplace 仓库的路径指名内容（`./p
 - **未钉住的条目需要显式 opt-in。** 官方 294 个条目中有 52 个以相对于 marketplace 仓库的路径指名内容，且没有一个带 `sha`。该路径会对那个仓库解析，但除非传入 `--allow-unpinned`，pin 规则仍会拒绝安装；该旗标会把来源的 ref 解析成它*现在*指向的 commit 并记录下来。这次安装因此是一个具体的 revision，可以要求它始终保持在该 revision 上，但它是某个 ref 的快照，并不保证下一次安装仍然一致。钉在会移动的 ref 上的条目则无论如何都不受影响。
 - **manifest 抓取是 GitHub 形状的。** repository url 会被解析成它的 `raw/main` manifest；其他主机则需要显式的 manifest url。
 - **skill 条目必须在插件的 `skills/` 目录顶层就能被发现。** 一个不含 `SKILL.md` 的目录，或一个非 Markdown 的文件，会被报告并跳过而不是复制：`skill-filesystem` 恰好只读一层，把它复制进发现根目录只会产出一个模型永远看不到的文件。
+- **Remote 界面管理已安装的插件，但无法安装。** 新增与搜索留在命令行。一次安装会解析来源、抓取它、钉住一个 revision 并报告该 pin——那是一套单一请求与回应承载不了的进度与部分失败交代。
 - **注释保留是尽力而为。** 写 patch 层会重新序列化该文件，而完整 dump 留不住用户的注释。只有组合出的行确实发生变化时才会写入，且变更检测经过规范化，因此单是键序不同永远不会触发写入。
 
 <a id="dev-note"></a>

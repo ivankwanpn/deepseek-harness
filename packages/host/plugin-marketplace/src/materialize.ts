@@ -369,11 +369,13 @@ export function materializeSkills(
 /**
  * Remove discovery-root entries this plugin owns.
  *
- * Two layouts are cleaned: the flat entries named here, and the plugin-scoped
- * directory an earlier build wrote (`<root>/<plugin>/<skill>/SKILL.md`), which
- * discovery never saw and which would otherwise outlive its record forever.
+ * Both placements are covered, because a name can be live or parked depending on
+ * enablement. Nothing else is touched: the parking directory and the
+ * plugin-scoped container belong to uninstall (see removePluginSkills).
+ * Removing the parking directory HERE would delete a disabled plugin's only copy
+ * of its skills the first time a sync or an enable dropped a stale name.
  *
- * @param options - the harness home and skills root both layouts are derived
+ * @param options - the harness home and skills root both placements are derived
  * from.
  * @param plugin - the entry name from the marketplace state.
  * @param names - the discovery-root entry names to delete.
@@ -394,11 +396,32 @@ export function removeMaterializedSkills(
       removed.push(name)
     }
   }
-  rmSync(parked, { recursive: true, force: true })
-  const legacy = join(root, plugin)
-  // Removed only when it is the container an earlier build wrote rather than a
-  // discoverable skill some plugin owns: a top-level SKILL.md means it is a real
-  // entry that this plugin's uninstall must not delete.
+  return removed
+}
+
+/**
+ * Remove everything one plugin left in the discovery root.
+ *
+ * Uninstall's cleanup, and deliberately wider than
+ * {@link removeMaterializedSkills}: once the record is gone nothing will ever
+ * address these paths again, so the parking directory and the plugin-scoped
+ * container an earlier build wrote go too. The container is removed only when it
+ * is not itself discoverable — a top-level `SKILL.md` means some plugin owns
+ * that name, and this uninstall must not delete it.
+ *
+ * @param options - the harness home and skills root every layout is derived from.
+ * @param plugin - the entry name from the marketplace state.
+ * @param names - the discovery-root entry names the plugin owns.
+ * @returns the names that existed and were removed.
+ */
+export function removePluginSkills(
+  options: MaterializeOptions,
+  plugin: string,
+  names: readonly string[],
+): string[] {
+  const removed = removeMaterializedSkills(options, plugin, names)
+  rmSync(disabledSkillsDir(options, plugin), { recursive: true, force: true })
+  const legacy = join(skillsRootDir(options), plugin)
   if (existsSync(legacy) && !existsSync(join(legacy, 'SKILL.md'))) {
     rmSync(legacy, { recursive: true, force: true })
   }

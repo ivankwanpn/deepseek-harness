@@ -18,6 +18,11 @@ import type { ScopeKey, ScopeLayer } from '@deepseek-ai/dsh-scope'
 import z from '@deepseek-ai/schemastery'
 import type Schema from '@deepseek-ai/schemastery'
 
+// The client-safe event face rides this entry's declaration output, so a
+// consumer of the package reads the `skills/change` signature without naming
+// the subpath. A type-only import would be elided here and reach no one.
+export type * from './types.ts'
+
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const DEFAULT_COLLECT_CACHE_ENTRIES = 128
 const MAX_COLLECT_ATTEMPTS = 2
@@ -285,17 +290,6 @@ export interface Config {
 declare module '@deepseek-ai/cordis' {
   interface Context {
     skills: SkillRegistry
-  }
-
-  interface Events {
-    /**
-     * A skill provider, runtime contribution, or provider-backed catalog may
-     * have changed. This is an unfiltered invalidation notification; consumers
-     * refetch the catalog for their own lookup options. Listener failures are
-     * contained and cannot veto the registry mutation.
-     * @mode emit
-     */
-    'skills/change'(): void
   }
 }
 

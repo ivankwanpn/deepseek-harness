@@ -19,8 +19,10 @@ import SkillRegistry from '@deepseek-ai/dsh-skill'
 import * as SkillFileSystem from '@deepseek-ai/dsh-skill-filesystem'
 import { uninstallPlugin } from '../src/install.ts'
 import {
+  disabledSkillsDir,
   materializeEntry,
   removeMaterializedSkills,
+  removePluginSkills,
   setSkillsEnabled,
   skillEntryNames,
   skillsEnabled,
@@ -214,7 +216,7 @@ describe('skill ownership', () => {
     writeFileSync(join(legacy, 'SKILL.md'), '---\nname: inner\ndescription: Old.\n---\n\nBody.\n', 'utf8')
     await expect(discovered()).resolves.toEqual([])
 
-    removeMaterializedSkills(options(), 'nested', ['inner'])
+    removePluginSkills(options(), 'nested', ['inner'])
 
     expect(existsSync(join(skillsRoot, 'nested'))).toBe(false)
   })
@@ -228,9 +230,28 @@ describe('skill ownership', () => {
     mkdirSync(owned, { recursive: true })
     writeFileSync(join(owned, 'SKILL.md'), '---\nname: shared-name\ndescription: Mine.\n---\n\nBody.\n', 'utf8')
 
-    removeMaterializedSkills(options(), 'shared-name', [])
+    removePluginSkills(options(), 'shared-name', [])
 
     expect(existsSync(join(owned, 'SKILL.md'))).toBe(true)
+  })
+
+  it('leaves a disabled plugin\u2019s parked copy alone when a stale name is dropped', async () => {
+    // The parking directory holds a DISABLED plugin's only copy. Cleaning stale
+    // names must not take the survivors with it, or re-enabling restores nothing.
+    const installPath = pluginWithSkills('parked', { kept: 'Still shipped.', gone: 'No longer shipped.' })
+    const options_ = options()
+    materializeEntry(entryFor('parked', installPath), options_)
+    expect(setSkillsEnabled(options_, 'parked', ['kept', 'gone'], false)).toBe(true)
+
+    rmSync(join(installPath, 'skills', 'gone'), { recursive: true, force: true })
+    const entry: InstalledEntry = { ...entryFor('parked', installPath), skillIds: ['kept', 'gone'] }
+    materializeEntry(entry, options_)
+
+    // `gone` was dropped; `kept` is still parked and still restorable.
+    expect(existsSync(join(disabledSkillsDir(options_, 'parked'), 'gone'))).toBe(false)
+    expect(existsSync(join(disabledSkillsDir(options_, 'parked'), 'kept'))).toBe(true)
+    expect(setSkillsEnabled(options_, 'parked', ['kept'], true)).toBe(true)
+    await expect(discovered()).resolves.toEqual(['kept'])
   })
 
   it('reports the three states of a plugin that ships no skills', () => {

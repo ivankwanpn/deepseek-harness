@@ -22,6 +22,21 @@ export interface MarketplaceRegistrationView {
   url: string
 }
 
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    /**
+     * This deployment serves the marketplace Remote face read-only.
+     *
+     * Its own code rather than `gateway/bad-request`: the request was well
+     * formed, and the panel tells the user the deployment refused, not that
+     * their click was malformed.
+     */
+    'marketplace/read-only': {}
+    /** The named plugin has no installed record, so there is nothing to toggle or remove. */
+    'marketplace/not-installed': { readonly plugin: string }
+  }
+}
+
 /**
  * How one installed plugin stands right now.
  *
@@ -30,6 +45,16 @@ export interface MarketplaceRegistrationView {
  * from the filesystem. Reporting it as `disabled` would be wrong.
  */
 export type InstalledStateView = 'enabled' | 'disabled' | 'no-rows' | 'not-mounted'
+
+/**
+ * Where one plugin's skills currently are.
+ *
+ * Skills mount by DISCOVERY rather than by a loader row, so their enablement
+ * never appears in the patch layer: it is whether the entries the plugin owns
+ * sit in the discovery root or parked beside it. `none` means the plugin ships
+ * no discoverable skill, which is a different fact from a parked one.
+ */
+export type SkillsStateView = 'live' | 'parked' | 'none'
 
 /** One installed plugin, joined across the state file and the patch layer. */
 export interface InstalledPluginView {
@@ -45,8 +70,12 @@ export interface InstalledPluginView {
   capabilities: string[]
   /** Patch rows this plugin owns; empty when it mounts no loader row. */
   rowIds: string[]
+  /** Discovery-root entries this plugin owns; empty when it ships no skill. */
+  skillIds: string[]
   /** Enablement and mount status, read from the patch layer now. */
   state: InstalledStateView
+  /** Where the owned skill entries are right now. */
+  skills: SkillsStateView
 }
 
 /**
@@ -61,4 +90,63 @@ export interface MarketplaceStatusView {
   marketplaces: MarketplaceRegistrationView[]
   /** Installed plugins, in state-file order. */
   installed: InstalledPluginView[]
+  /**
+   * Whether this deployment serves the write methods at all.
+   *
+   * Reported so the panel can explain why it offers no controls, instead of
+   * rendering buttons whose every click is refused. The Host still enforces it
+   * on each call; this field is display input, never the check.
+   */
+  allowMutations: boolean
+}
+
+/** One plugin to enable or disable. */
+export interface PluginEnableRequest {
+  /** Plugin name as its marketplace declares it. */
+  plugin: string
+  /** Desired state: true to mount and discover, false to take both away. */
+  enabled: boolean
+}
+
+/** One plugin to uninstall. */
+export interface PluginUninstallRequest {
+  /** Plugin name as its marketplace declares it. */
+  plugin: string
+}
+
+/**
+ * What one enablement change did.
+ *
+ * Counts and flags rather than sentences: the panel owns its copy, and a Host
+ * that returned rendered English would put product text outside the locale
+ * dictionaries.
+ */
+export interface PluginEnablementView {
+  /** Plugin the call addressed. */
+  plugin: string
+  /** Loader rows whose `disabled` flag this call rewrote. */
+  rowsChanged: number
+  /** True when the plugin's skills moved between discovery and parking. */
+  skillsMoved: boolean
+  /**
+   * True when the plugin already stood in the requested state.
+   *
+   * Reported rather than treated as an error: the caller asked for an end state
+   * that already holds, which is a success with nothing to do.
+   */
+  alreadyInState: boolean
+  /** True when the plugin mounts nothing at all, so no toggle could apply. */
+  mountsNothing: boolean
+  /** The status after the write, so the panel needs no second round trip. */
+  status: MarketplaceStatusView
+}
+
+/** What one uninstall removed. */
+export interface PluginRemovalView {
+  /** Plugin the call addressed. */
+  plugin: string
+  /** True when an installed record existed and was removed. */
+  removed: boolean
+  /** The status after the write, so the panel needs no second round trip. */
+  status: MarketplaceStatusView
 }
