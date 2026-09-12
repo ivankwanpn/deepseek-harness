@@ -10,6 +10,7 @@ import {
   assignWeightedPartitions,
   collectPartitionDurations,
   coverageTestTimeoutArgs,
+  coverageTestTimeoutMs,
   forwardedCoverageArgs,
   parseCoveragePartitionCount,
   parseListOutput,
@@ -97,20 +98,28 @@ describe('coverage partition count', () => {
 })
 
 describe('coverage partition timeout', () => {
-  it('applies one configured timeout to tests, polling, and hooks', () => {
+  it('applies the configured budget to tests and hooks', () => {
     expect(coverageTestTimeoutArgs('30000')).toEqual([
       '--testTimeout=30000',
-      '--expect.poll.timeout=30000',
       '--hookTimeout=30000',
     ])
   })
 
+  it('resolves the configured budget for callers that declare it themselves', () => {
+    expect(coverageTestTimeoutMs('30000')).toBe(30000)
+  })
+
   it('keeps Vitest defaults when the timeout is absent', () => {
     expect(coverageTestTimeoutArgs(undefined)).toEqual([])
+    expect(coverageTestTimeoutMs(undefined)).toBeUndefined()
+    expect(coverageTestTimeoutArgs('')).toEqual([])
+    expect(coverageTestTimeoutMs('')).toBeUndefined()
   })
 
   it('rejects invalid timeout input', () => {
     expect(() => coverageTestTimeoutArgs('0'))
+      .toThrow(`${COVERAGE_TEST_TIMEOUT_ENV} must be a positive integer`)
+    expect(() => coverageTestTimeoutMs('0'))
       .toThrow(`${COVERAGE_TEST_TIMEOUT_ENV} must be a positive integer`)
   })
 })

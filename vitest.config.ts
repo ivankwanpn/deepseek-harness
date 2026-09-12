@@ -5,7 +5,7 @@ import { isPwsh, resolvePwshPath } from './packages/shell/pwsh-local/src/resolve
 import { defineConfig } from 'vitest/config'
 import { standardDecoratorPlugin, vitestExecArgv } from './vitest.shared.ts'
 import { COVERAGE_EXEMPT_ENV, coverageExemptHeavySuites } from './scripts/coverage-exempt.ts'
-import { COVERAGE_PARTITION_MODE_ENV } from './scripts/coverage-partitions.ts'
+import { COVERAGE_PARTITION_MODE_ENV, COVERAGE_TEST_TIMEOUT_ENV, coverageTestTimeoutMs } from './scripts/coverage-partitions.ts'
 
 // Prints exact `path:line:col` records for every uncovered statement, branch
 // path, and function when a file misses the per-file 100% gate — the built-in
@@ -160,6 +160,23 @@ const processBoundTests = [
   'packages/workflow/workflow-worker-thread/tests/session.spec.ts',
 ]
 
+/**
+ * The per-test budget this lane grants, in milliseconds.
+ *
+ * `DSH_COVERAGE_TEST_TIMEOUT_MS` is the authority: CI exports 90000 for both
+ * coverage lanes, and `run-gates.ts` derives the same CLI arguments from it.
+ * Reading it back here keeps a run that Vitest starts directly — no gate in
+ * front of it — on the lane's budget instead of Vitest's 5 s case default, and
+ * grants `expect.poll` and `vi.waitFor` more than Vitest's hardcoded 1 s.
+ * The 90000 fallback is what both coverage lanes export; a full local run under
+ * the smaller defaults failed 10 cases whose files each pass alone.
+ *
+ * `expect.poll.timeout` must be declared here rather than passed as a flag:
+ * Vitest 4 accepts `--expect.poll.timeout` but resolves the poll budget from the
+ * loaded config, so the argument alone changed nothing.
+ */
+const LANE_BUDGET_MS = coverageTestTimeoutMs(process.env[COVERAGE_TEST_TIMEOUT_ENV]) ?? 90_000
+
 export default defineConfig({
   plugins: [pathsPlugin(), standardDecoratorPlugin()],
   test: {
@@ -175,6 +192,9 @@ export default defineConfig({
         test: {
           name: 'thread-safe',
           execArgv: vitestExecArgv,
+          testTimeout: LANE_BUDGET_MS,
+          hookTimeout: LANE_BUDGET_MS,
+          expect: { poll: { timeout: LANE_BUDGET_MS } },
           // Node 24 has aborted in its CJS lexer (v8::ToLocalChecked Empty
           // MaybeLocal in cjs_lexer::Parse) from worker threads on macOS,
           // Linux, and Windows. Forked workers avoid that shared thread path.
@@ -193,6 +213,9 @@ export default defineConfig({
         test: {
           name: 'process-bound',
           execArgv: vitestExecArgv,
+          testTimeout: LANE_BUDGET_MS,
+          hookTimeout: LANE_BUDGET_MS,
+          expect: { poll: { timeout: LANE_BUDGET_MS } },
           pool: 'forks',
           setupFiles: ['./scripts/test-proxy-environment.ts', './scripts/test-invariants.ts'],
           include: processBoundTests,

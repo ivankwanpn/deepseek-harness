@@ -70,6 +70,8 @@ A `describe` or case timeout overrides the runner's `--testTimeout` instead of y
 
 Raise the hook budget with the test budget. Setup and teardown pay the same contention, so lifting only the case budget moves a contended failure into `afterEach`.
 
+`vitest.config.ts` declares the case, hook, and `expect.poll` budgets from `DSH_COVERAGE_TEST_TIMEOUT_MS` with the lane's 90-second fallback, so a run with no gate in front of it grants the same value the coverage lanes export. `vi.waitFor` and `vi.waitUntil` are not among them: Vitest hardcodes their 1000 ms default and reads no config, so a wait that can cross a process or filesystem boundary states its own timeout, and `expect.poll` is the form that inherits the lane budget.
+
 Where a timeout is the subject, keep the outer wait far larger than the timeout under test. A case proving that a 20 ms deadline fires must not race the harness's own wait, or load decides which deadline reports first.
 
 ## Synchronize on state
