@@ -34,18 +34,26 @@ import {
 } from './state.ts'
 
 /**
- * A refused install, raised before any state is written.
+ * Why an install was refused.
  *
- * The distinction this type buys a caller: these errors are deliberate
- * diagnoses — an unpinned source, an unknown name, an unusable plugin name —
- * and each is raised before the state file is touched, so the recorded state
- * still describes the disk. Failures from fetching or moving content propagate
- * unwrapped, because there the underlying error is already the diagnosis.
+ * Structural rather than textual: the Remote face maps this to a wire code, so
+ * a reworded message must not be able to change what a client is told.
  */
+export type InstallRefusal = 'name-unusable' | 'no-marketplace' | 'not-found' | 'unpinned'
+
+/** Raised when an install or a resolution is refused. */
 export class InstallError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message, options)
+  /** Which refusal this is. */
+  readonly reason: InstallRefusal
+
+  /**
+   * @param reason - which refusal this is.
+   * @param message - the human-readable explanation.
+   */
+  constructor(reason: InstallRefusal, message: string) {
+    super(message)
     this.name = 'InstallError'
+    this.reason = reason
   }
 }
 
@@ -102,13 +110,14 @@ export interface InstallResult {
  * @param pluginsRoot - the root every plugin directory sits under.
  * @param plugin - the plugin name as the marketplace entry declares it.
  * @returns the directory to materialize this plugin's content into.
- * @throws {InstallError} when sanitizing leaves no usable characters.
+ * @throws {InstallError} with reason `name-unusable` when sanitizing leaves no
+ *   usable characters.
  */
 export function pluginInstallPath(pluginsRoot: string, plugin: string): string {
   // The plugin name is third-party input and becomes a directory name, so strip
   // anything that could escape the root or collide with a path separator.
   const safe = plugin.replace(/[^A-Za-z0-9._-]/g, '-').replace(/^\.+/, '')
-  if (safe === '') throw new InstallError(`plugin name ${JSON.stringify(plugin)} has no usable characters`)
+  if (safe === '') throw new InstallError('name-unusable', `plugin name ${JSON.stringify(plugin)} has no usable characters`)
   return join(pluginsRoot, safe)
 }
 
@@ -127,8 +136,9 @@ export function pluginInstallPath(pluginsRoot: string, plugin: string): string {
  * @param options - fetch overrides passed to every marketplace read.
  * @returns the matching entry, the marketplace it came from, and the previous
  *   name when the match came from a published rename.
- * @throws {InstallError} when no marketplace is registered, or none lists the
- *   name directly or as a rename target.
+ * @throws {InstallError} with reason `no-marketplace` when no marketplace is
+ *   registered, or `not-found` when none lists the name directly or as a rename
+ *   target.
  */
 export async function resolveEntry(
   state: MarketplaceState,
@@ -136,7 +146,7 @@ export async function resolveEntry(
   options: { fetch?: FetchOptions } = {},
 ): Promise<{ entry: MarketplaceEntry; marketplace: string; marketplaceUrl: string; renamedFrom?: string }> {
   if (state.marketplaces.length === 0) {
-    throw new InstallError('no marketplaces registered; run `dsh plugin marketplace add <repo>` first')
+    throw new InstallError('no-marketplace', 'no marketplaces registered; run `dsh plugin marketplace add <repo>` first')
   }
   for (const registration of state.marketplaces) {
     const market = await fetchMarketplace(registration.url, options.fetch ?? {})
@@ -155,7 +165,7 @@ export async function resolveEntry(
       return { entry: renamed, marketplace: market.name, marketplaceUrl: registration.url, renamedFrom: plugin }
     }
   }
-  throw new InstallError(`no marketplace lists a plugin named ${JSON.stringify(plugin)}`)
+  throw new InstallError('not-found', `no marketplace lists a plugin named ${JSON.stringify(plugin)}`)
 }
 
 /**
@@ -171,9 +181,9 @@ export async function resolveEntry(
  *   configuration the post-install reconcile runs with.
  * @returns the row that was recorded, the reconcile that followed it, and the
  *   warnings worth showing the user.
- * @throws {InstallError} when the entry cannot be resolved or its source has
- *   no sha pin; a failing fetch rethrows its own error after removing the
- *   staging directory.
+ * @throws {InstallError} with reason `not-found` when the entry cannot be
+ *   resolved, or `unpinned` when its source has no sha pin; a failing fetch
+ *   rethrows its own error after removing the staging directory.
  */
 export async function installPlugin(plugin: string, options: InstallOptions): Promise<InstallResult> {
   const warnings: string[] = []
@@ -205,6 +215,7 @@ export async function installPlugin(plugin: string, options: InstallOptions): Pr
 
   if (!isPinned({ ...entry, source: resolved })) {
     throw new InstallError(
+      'unpinned',
       `refusing to install ${plugin}: its source has no sha pin, so the content is not reproducible`
       + ' (pass allowUnpinned / --allow-unpinned to record the commit the ref names now)',
     )
