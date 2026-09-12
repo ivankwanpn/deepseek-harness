@@ -92,7 +92,7 @@ The executor is the PowerShell Service Provider for the `ctx.shell` seam built o
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: `PwshLocalExecutor`, `Config`, settings wiring, argv seam |
-| [`src/resolve.ts`](src/resolve.ts) | Pure `resolvePwshPath`/`candidatePwshPaths` executable resolution |
+| [`src/resolve.ts`](src/resolve.ts) | Pure `resolvePwshPath`/`candidatePwshPaths` executable resolution, and `isPwsh` for the suites and coverage probe that must tell pwsh from the Windows PowerShell 5.1 fallback |
 | — | No runtime invariant companion is published; this package exposes no independent event sequence or mutable data relation beyond contracts enforced at its owning seam. |
 | `tests/` | Exercised behavior: budgets, classification, resolution, background handles |
 

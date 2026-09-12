@@ -77,3 +77,25 @@ export function resolvePwshPath(
   }
   return 'pwsh'
 }
+
+/**
+ * Whether a resolved executable is pwsh rather than the Windows PowerShell 5.1
+ * fallback.
+ *
+ * Every suite, snapshot harness and coverage probe that asks "is pwsh
+ * available" means this. The fallback keeps the executor working on a legacy
+ * host, but a suite that asserts which shell was wrapped cannot run there, and
+ * the coverage exemption standing in for such a suite has to reach the same
+ * answer — an availability probe that accepts the fallback lets those suites
+ * run and fail instead of skipping.
+ *
+ * @param resolved - an executable path from {@link resolvePwshPath}.
+ * @returns true when the executable is pwsh.
+ */
+export function isPwsh(resolved: string): boolean {
+  // Both separators split it: resolution answers for the running platform, and
+  // the pure suites also ask it about Windows paths from any host.
+  const lastSeparator = Math.max(resolved.lastIndexOf('/'), resolved.lastIndexOf('\\'))
+  const name = resolved.slice(lastSeparator + 1).toLowerCase()
+  return name === 'pwsh' || name === 'pwsh.exe'
+}

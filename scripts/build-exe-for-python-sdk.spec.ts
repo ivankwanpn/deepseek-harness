@@ -22,6 +22,16 @@ function run(env: NodeJS.ProcessEnv, ...args: string[]) {
   })
 }
 
+/**
+ * One command part as the script's own renderer prints it: a part containing a
+ * space is quoted, which `process.execPath` always is when Node is installed
+ * under `Program Files`. Mirrors `formatCommand` in the script, which cannot be
+ * imported here because that module runs the build at load.
+ * @param part - one executable or argument of the printed command.
+ * @returns the part as it appears in the dry-run output.
+ */
+const rendered = (part: string): string => (part.includes(' ') ? JSON.stringify(part) : part)
+
 describe('Python runtime executable builder CLI', () => {
   it('keeps the single-file dispatcher on the Python packaging surface', () => {
     const bootstrapPath = resolve(root, 'python/sdk-runtime/runtime-bootstrap.mjs')
@@ -58,14 +68,14 @@ describe('Python runtime executable builder CLI', () => {
     )
 
     expect(result.status).toBe(0)
-    expect(result.stdout).toContain(`${process.execPath} C:\\tools\\pnpm.cjs run verify-runtime-closure`)
-    expect(result.stdout).toContain(`${process.execPath} C:\\tools\\pnpm.cjs --filter dsh-python-runtime-closure deploy`)
+    expect(result.stdout).toContain(`${rendered(process.execPath)} C:\\tools\\pnpm.cjs run verify-runtime-closure`)
+    expect(result.stdout).toContain(`${rendered(process.execPath)} C:\\tools\\pnpm.cjs --filter dsh-python-runtime-closure deploy`)
     const deploy = result.stdout.split('\n').find(line => line.includes(' --filter dsh-python-runtime-closure deploy'))
     expect(deploy).toContain('--prod --config.allow-unused-patches=true')
     expect(result.stdout.split('--config.allow-unused-patches=true')).toHaveLength(2)
     expect(result.stdout).not.toContain(resolve(root, 'python/sdk-runtime/runtime-bootstrap.mjs'))
     expect(result.stdout).toContain('"bin":"runtime-bootstrap.mjs"')
-    expect(result.stdout).toContain(`${process.execPath} C:\\tools\\pnpm.cjs exec pkg`)
+    expect(result.stdout).toContain(`${rendered(process.execPath)} C:\\tools\\pnpm.cjs exec pkg`)
     expect(result.stdout).not.toMatch(/pnpm\.cmd/i)
   })
 
@@ -86,7 +96,7 @@ describe('Python runtime executable builder CLI', () => {
     )
 
     expect(result.status).toBe(0)
-    expect(result.stdout).toContain(`${process.execPath} ${entrypoint} run verify-runtime-closure`)
+    expect(result.stdout).toContain(`${rendered(process.execPath)} ${rendered(entrypoint)} run verify-runtime-closure`)
     expect(result.stdout).not.toMatch(/pnpm\.cmd/i)
   })
 

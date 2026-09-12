@@ -82,7 +82,7 @@ type ResolvedConfig = Required<Omit<Config, 'cwd' | 'pwshPath'>> & Pick<Config, 
 
 // Resolution lives in its own dependency-free module so the repository's
 // coverage-gate probe shares the exact definition the suites use.
-export { candidatePwshPaths, resolvePwshPath } from './resolve.ts'
+export { candidatePwshPaths, isPwsh, resolvePwshPath } from './resolve.ts'
 
 /** Project a settled collect-mode reader into the final CollectedOutput shape. */
 function finalOutput(reader: SubprocessOutputReader): CollectedOutput {
