@@ -80,6 +80,8 @@ Two cleanup functions split by what they may delete. `removeMaterializedSkills` 
 
 `src/catalog.ts` owns one read that both faces call. It visits every registered marketplace in stored order and returns one row per entry: the fields a list renders, the name the supplying manifest declares, whether this package's pin rule accepts the source, whether an installed record already exists, and the warnings the entry carried.
 
+`installable` is that pin rule's verdict on the entry as the manifest declares it, and it is not a promise that an install succeeds: an install re-resolves the source first, so a marketplace-relative `local` entry this read accepts becomes a git subdirectory carrying no `sha` and is then refused as unpinned. The two verdicts disagree on exactly those entries.
+
 A registration that cannot be read becomes one reported failure carrying its registration name and the fetch layer's reason, and the loop continues to the next one. The CLI's `search` prints each failure to stderr and still prints the matches the readable registrations supplied, so silence never reads as "this marketplace lists nothing". An empty query lists everything, and a deployment with no registration resolves empty rather than refusing — `search` keeps its own separate refusal for that case.
 
 The read accepts an optional fetch budget, and `marketplace.catalog` passes none: every manifest read uses the fetch layer's own budget. It is the only read on this Remote face that reaches the network, which is why the panel asks for it on request rather than when its tab opens.
