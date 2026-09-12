@@ -47,6 +47,7 @@ async function git(args: readonly string[], cwd?: string): Promise<string> {
     const stderr = (error as { stderr?: string }).stderr
     const firstLine = typeof stderr === 'string' ? stderr.trim().split('\n')[0] : undefined
     const detail = firstLine !== undefined && firstLine !== '' ? firstLine : (error as Error).message
+    /* v8 ignore next -- every call passes at least one argument, so the empty-command fallback is defensive. */
     throw new PluginFetchError(`git ${args[0] ?? ''} failed: ${detail}`, { cause: error })
   }
 }
@@ -81,6 +82,7 @@ export async function resolveRefSha(url: string, ref = 'HEAD'): Promise<string> 
       if (sha !== undefined && /^[0-9a-f]{40}$/.test(sha)) return sha
       attempts.push(`${candidate}: no commit returned`)
     } catch (error) {
+      /* v8 ignore next -- git failures arrive as Error instances; the String arm defends this resolver against a non-Error throw. */
       attempts.push(`${candidate}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }

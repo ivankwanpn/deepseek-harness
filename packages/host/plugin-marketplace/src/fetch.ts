@@ -85,10 +85,10 @@ export async function fetchMarketplace(url: string, options: FetchOptions = {}):
   try {
     return parseMarketplace(raw)
   } catch (error) {
-    if (error instanceof MarketplaceParseError) {
-      throw new MarketplaceParseError(`${url}: ${error.message}`)
-    }
-    throw error
+    /* v8 ignore start -- parseMarketplace throws only MarketplaceParseError; this arm keeps an unexpected fault unrelabelled. */
+    if (!(error instanceof MarketplaceParseError)) throw error
+    /* v8 ignore stop */
+    throw new MarketplaceParseError(`${url}: ${error.message}`)
   }
 }
 
@@ -150,6 +150,7 @@ function cloneUrlFrom(manifestUrl: string): string | undefined {
   const github = /^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/(?:raw|blob|tree)\/.*)?$/i.exec(decoded)
   if (github) {
     const [, owner, repo] = github
+    /* v8 ignore else -- both groups are mandatory in the pattern above, so a match implies both are present. */
     if (owner !== undefined && repo !== undefined) return `https://github.com/${owner}/${repo}.git`
   }
   // A raw host is derived rather than stripped, so it reuses the same form as
@@ -157,6 +158,7 @@ function cloneUrlFrom(manifestUrl: string): string | undefined {
   const raw = /^https?:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+?)(?:\/.*)?$/i.exec(decoded)
   if (raw) {
     const [, owner, repo] = raw
+    /* v8 ignore else -- both groups are mandatory in the pattern above, so a match implies both are present. */
     if (owner !== undefined && repo !== undefined) return `https://github.com/${owner}/${repo}.git`
   }
   return undefined
@@ -264,6 +266,7 @@ export async function fetchMarketplaceFrom(
     try {
       return { marketplace: await fetchMarketplace(candidate, options), manifestUrl: candidate }
     } catch (error) {
+      /* v8 ignore next -- a failed fetch rejects with an Error; the String arm defends this reporter against a non-Error throw. */
       attempts.push(`${candidate} → ${error instanceof Error ? error.message : String(error)}`)
     }
   }
