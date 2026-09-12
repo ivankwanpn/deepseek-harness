@@ -10,7 +10,7 @@ The Web marketplace panel read state and could change none of it. Every action a
 
 ## Decision
 
-The panel manages plugins that are already installed: enable, disable, uninstall. Installing, searching and registering a marketplace stay on the CLI, where a fetch, its pinned revision, and its progress have somewhere to report.
+The panel manages plugins that are already installed: enable, disable, uninstall. Browsing and installing live in the same tab and the same Remote face, owned by [the catalog and install note](2026-09-12-marketplace-catalog-and-install.md); registering a marketplace stays on the CLI.
 
 **Reads never write.** `marketplace.status` resolves ownership from the state record and the plugin's own `skills/` directory, and enablement from the patch layer. It never materializes, so opening a settings tab cannot copy or move anything on disk. This is the property the earlier read-only surface was built to protect, and it is kept rather than traded away.
 
@@ -28,7 +28,7 @@ Wiring the write path exposed a cleanup bug in the same area as [the flat skill 
 
 ## Alternatives considered
 
-**Exposing install and search from the panel too.** Deferred, not rejected. An install resolves a source, fetches it, pins a revision and reports the pin; that needs a progress and partial-failure story a single request and response does not carry, and the CLI already does it. Uninstall and enablement needed none of that work, which is why they came first.
+**Exposing install and search from the panel too.** Deferred here rather than rejected, and taken up by [the catalog and install note](2026-09-12-marketplace-catalog-and-install.md), which serves browsing through one catalog read and an install through one request. Uninstall and enablement needed none of that work, which is why they came first.
 
 **Gating writes in the panel alone.** Rejected: the panel is one client among several that can reach the same Remote namespace, and the CLI can change a plugin between a read and a click. A rule enforced only where it is displayed is not enforced.
 
@@ -40,7 +40,7 @@ Wiring the write path exposed a cleanup bug in the same area as [the flat skill 
 
 ## Consequences
 
-- The Remote namespace is no longer read-only: `marketplace.setEnabled` and `marketplace.uninstall` join `marketplace.status`, and the generated client face carries all three.
+- The Remote namespace carries writes as well as reads: `marketplace.setEnabled` and `marketplace.uninstall` join `marketplace.status`, and the generated client face carries every method the service publishes.
 - The panel can delete files. That is the cost of the feature, and the reason for the acknowledgement gate, the per-card refusal message, and the config flag.
 - `marketplace.status` gained three fields it must keep honest: `skillIds`, `skills`, and `allowMutations`.
 - `RemoteErrorDetailsMap` gains `marketplace/read-only` and `marketplace/not-installed`, so a refusal reaches the panel as a stable code rather than an untyped failure.

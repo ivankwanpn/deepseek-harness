@@ -1,5 +1,5 @@
 ---
-description: "Marketplace tab in the dsh web Plugins settings: registered marketplaces, installed plugins with pin, capabilities, owned loader rows and skill entries, and the controls that enable, disable or uninstall one."
+description: "Marketplace tab in the dsh web Plugins settings: registered marketplaces, installed plugins with pin, capabilities, owned loader rows and skill entries, the controls that enable, disable or uninstall one, and the available-plugins section that reads a catalog on request, filters it in the browser and installs from it."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use the **Marketplace** tab in Plugins settings to see what the plugin marketplace installed, how each plugin currently stands, and to turn one on or off or remove it. It lists the registered marketplaces and, for every installed plugin, its pinned commit, its detected capabilities, the loader rows and discovery-root entries it owns, and where each of those is now. A toggle enables or disables the plugin and an **Uninstall** control removes it, the latter gated behind an explicit acknowledgement because it deletes files. Installing a plugin stays on the `dsh plugin marketplace` command line.
+Use the **Marketplace** tab in Plugins settings to see what the plugin marketplace installed, how each plugin stands, and what the registered marketplaces offer. It lists the registered marketplaces and, per installed plugin, its pinned commit, capabilities, owned loader rows, discovery-root entries, and where each is now, with a toggle and an **Uninstall** control, the latter gated behind an acknowledgement because it deletes files. A third section reads the available plugins on request, filters them in the browser, and installs one, asking for an acknowledgement when the Host has not pinned its source.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ Use the **Marketplace** tab in Plugins settings to see what the plugin marketpla
 <a id="use-this-package"></a>
 ## Use this package
 
-Open the Plugins section in Settings and select the **Marketplace** tab. The tab reads nothing until it is selected; selecting it mounts the component, which calls `ctx.remote.marketplace.status()` once through `api-remotes`.
+Open the Plugins section in Settings and select the **Marketplace** tab. The tab reads nothing until it is selected; selecting it mounts the component, which calls `ctx.remote.marketplace.status()` once through `api-remotes`. The available-plugins section below it reads nothing until you ask it to.
 
 ### Reading a card
 
@@ -43,13 +43,23 @@ Flipping it asks the Host for the opposite state and renders the status the Host
 
 **Uninstall** opens a confirmation that requires an explicit acknowledgement before its confirm button becomes available, naming the plugin in its title. Uninstall deletes the plugin content directory, its materialized skills, its loader rows and its install record, and none of that is recoverable.
 
+### Browsing and installing from the catalog
+
+The section below the installed list opens with one control that reads the catalog from the registered marketplaces; the filter field, the rows and a refresh control appear once it answers. That read is the only one in the tab that leaves the machine, so it runs on request rather than when the tab opens: a git fetch must not hold up a settings page. A failed read reports itself inside the section and keeps the rows already on screen, and a registration the Host could not read is named there with its reason.
+
+Filtering happens in the browser over the rows already read, with the predicate the CLI's `search` applies: a case-insensitive substring test over the plugin name, description, category and tags, with the filter trimmed and an empty filter matching every row.
+
+One row shows the plugin name, an installed marker, the description, the entry's warnings, and a warning tag when the Host's pin rule refuses the source. **Install** on an accepted row installs it in one call; on a row the Host calls unpinned it opens a confirmation whose acknowledgement names the missing pin, and whose confirm control stays unavailable until that box is set.
+
+After an install the panel renders the status the Host returned and re-reads the catalog, so the installed list and the row both show the Host's own view of what is now installed. A refusal lands on the row it was refused for, and no other row is touched. A read-only deployment draws no install control at all.
+
 ### When a write is refused
 
 A refused write renders the Host's own message on the card it was refused for, leaving every other card untouched: one refusal is not a page-level error, and the panel does not discard a status it already has. The message carries the Host's refusal code, which says more than a translated sentence that would have to guess which refusal it was.
 
 ### When the deployment serves the panel read-only
 
-A deployment can turn the write verbs off. The status snapshot reports that, and the panel then renders a short notice instead of the controls: no toggle and no uninstall button appear at all, so no click can fail. The read itself still works, because a read-only panel is not an unavailable one.
+A deployment can turn the write verbs off. The status snapshot reports that, and the panel then renders a short notice instead of the controls: no toggle, no uninstall button and no install control appear at all, so no click can fail. The reads still work, because a read-only panel is not an unavailable one.
 
 ### Retrying a failed read
 
@@ -61,13 +71,15 @@ A failed read renders a short failure line with a **Retry** button. The panel do
 
 **A request surface, not an authority.** The panel decides nothing: it asks the Host for a state, renders the answer, and asks again to change one. The permission, the ownership rules, and the writes themselves live in `packages/host/plugin-marketplace`, which is why a deployment that turns writes off is obeyed rather than worked around — the flag is checked where the write happens, and this package only stops drawing controls.
 
-**A control that cannot act is not drawn.** A toggle on a plugin that mounts nothing, an uninstall on a read-only deployment, a second click while a write is in flight: each is a button whose only possible outcome is a refusal, so the panel withholds it. The refusal is still enforced on the Host side for the cases the panel cannot see, such as a change made from the CLI between a read and a click.
+**A control that cannot act is not drawn.** A toggle on a plugin that mounts nothing, an uninstall or an install on a read-only deployment, a second click while a write is in flight: each is a button whose only possible outcome is a refusal, so the panel withholds it. The refusal is still enforced on the Host side for the cases the panel cannot see, such as a change made from the CLI between a read and a click.
 
-**Nothing is cached.** The Host reads the state file and parses the patch layer on each call. Both change underneath a running harness: the CLI can install or disable something while the browser is open, and Cordis HMR can rewrite the patch layer at any moment. A cached snapshot would need an invalidation path for every writer, and the read is cheap enough that it needs none. A write returns the status it produced, so the panel never re-reads to find out what it did.
+**Nothing is cached.** The Host reads the state file and parses the patch layer on each call. Both change underneath a running harness: the CLI can install or disable something while the browser is open, and Cordis HMR can rewrite the patch layer at any moment. A cached snapshot would need an invalidation path for every writer, and the read is cheap enough that it needs none. A write returns the status it produced, so the panel never re-reads the status to find out what it did; it re-reads the catalog after an install, for the marketplace's own view of what it now offers.
 
 ### What the Host read guarantees
 
 The Host's `status()` never materializes. `materializeEntry` copies skills into the discovery root and can park them under `.disabled`, so a status read built on it would mutate the user's disk as a side effect of opening a settings tab. Row ids are derived from each installed plugin's `.mcp.json`, and skill ownership from the state record or the plugin's own `skills/` directory, so the read names what the writer would address without either one writing.
+
+The catalog read writes nothing either: it fetches each registration's manifest and maps its entries to rows, with installability decided by the Host's own pin rule. Its failures are per registration, so one unreadable marketplace cannot blank the rows the readable ones supplied.
 
 Enablement comes from the patch layer and nowhere else, matching the ownership rule the marketplace package states: existence and provenance live in the state file, enablement lives in the patch layer. Skills are the one capability the patch layer cannot describe, because they mount by discovery; the status view therefore carries where they are as its own fact rather than inferring it from a row.
 
@@ -75,8 +87,9 @@ Enablement comes from the patch layer and nowhere else, matching the ownership r
 
 | File | Role |
 |---|---|
-| `src/client/index.ts` | registers the tab into `settings.plugins.tab` and wraps the three Remote calls |
-| `src/client/MarketplaceSettingsTab.tsx` | the panel: both sections, the state tags, the per-plugin controls and confirmations, and the retry state |
+| `src/client/index.ts` | registers the tab into `settings.plugins.tab` and wraps the five Remote calls |
+| `src/client/MarketplaceSettingsTab.tsx` | the panel: the registered, installed and available sections, the state tags, the per-plugin controls and confirmations, and the retry state |
+| `src/client/CatalogSection.tsx` | the available-plugins section: load-on-request, the filter predicate, the rows and the per-row install control |
 | `src/client/locales.ts` | the `settings.marketplace` dictionaries, key union declared first |
 | `src/index.ts` | host loader entry with no host-side behavior |
 | — | No runtime invariant companion is published; this package owns no durable state, writes nothing itself, and contributes one settings tab whose every mutation is a Remote call. |
@@ -106,10 +119,12 @@ None on its own. Opening, reading, or closing the panel changes nothing in the r
 
 ## Known Limitations and Deferred Work
 
-- **Installing is not here.** The tab manages what is already installed; browsing a marketplace, searching it, and installing from it stay on the CLI, where a fetch and its pinned revision have somewhere to report progress.
-- **A write has no progress of its own.** A toggle or an uninstall shows that it is in flight and then the result, because both are short filesystem operations. A future install from this panel would need a progress channel rather than a longer spinner.
-- **A failed read is not diagnosed.** The panel shows one generic failure with a retry, because the Host's error text is a filesystem or parse diagnosis that the operator resolves in a terminal.
-- **The two sections are lists, not a search.** A marketplace with hundreds of plugins is browsed from the CLI; this tab exists to answer "what did I install, and is it on?" rather than "what could I install?".
+- **A write has no progress of its own.** A toggle, an uninstall or an install shows that it is in flight and then the result, because each is one request; the catalog re-read that follows an install is what refreshes the section.
+- **A failed read is not diagnosed.** A status read that fails outright renders one generic failure with a retry, because the Host's error text is a filesystem or parse diagnosis that the operator resolves in a terminal. The catalog read is the exception: an unreadable registration is named with its reason, and the rows already read stay on screen.
+- **The filter predicate exists in two places.** The panel filters in the browser and the CLI filters on the Host, because the two are different programs; both are pinned with the same four fields, so a drift is a test failure rather than a silent difference.
+- **The catalog is a snapshot.** A marketplace can change between the read and the click; the Host re-resolves the entry at install time, so the recorded pin is the current one rather than what the row displayed.
+- **An unpinned install records a commit you never saw.** The acknowledgement permits the install; the revision recorded is the one the source's ref names at that moment.
+- **Registering a marketplace is not here.** The tab lists the registrations and installs from them; adding one is `dsh plugin marketplace add` on the command line.
 - **No update or version view.** The panel shows the pinned commit but not whether the marketplace now lists a newer one, because nothing in this package resolves upstream revisions.
 
 ### Dev Note

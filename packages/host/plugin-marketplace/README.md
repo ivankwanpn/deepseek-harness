@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Parses a Claude-compatible `marketplace.json`, fetches one plugin at its pinned commit, and reconciles it into DSH without teaching the core the external schema: every skill a plugin ships is materialized FLAT into the discovery root, and each `.mcp.json` server becomes one loader row. Enablement is one verb over two mechanisms — a row's `disabled` flag, and moving skills out of the discovery tree. Every write is limited to entries the marketplace owns, so user patches and skills are never rewritten; the CLI and the Web settings panel drive those writes through one shared implementation.
+Parses a Claude-compatible `marketplace.json`, browses what the registered marketplaces offer, installs one plugin at its pinned commit, and reconciles it into DSH without teaching the core the external schema: every skill a plugin ships is materialized FLAT into the discovery root, and each `.mcp.json` server becomes one loader row. Enablement is one verb over two mechanisms: a row's `disabled` flag and moving skills out of discovery. Every write is limited to entries the marketplace owns, so user patches and skills are never rewritten; the CLI and the Web settings panel share that implementation.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ Parses a Claude-compatible `marketplace.json`, fetches one plugin at its pinned 
 <a id="use-this-package"></a>
 ## Use this package
 
-Call this package when a user asks DSH to install something from a plugin marketplace. The CLI face is `dsh plugin marketplace <add|list|search|install|uninstall|installed|enable|disable>`; the programmatic face is `installPlugin`, `sync`, and `setEnabled`; the Remote face is `MarketplaceGateway`, whose `marketplace.status` read and `marketplace.setEnabled` / `marketplace.uninstall` writes back the Web settings panel.
+Call this package when a user asks DSH to install something from a plugin marketplace. The CLI face is `dsh plugin marketplace <add|list|search|install|uninstall|installed|enable|disable>`; the programmatic face is `catalog`, `installPlugin`, `sync`, and `setEnabled`; the Remote face is `MarketplaceGateway`, whose `marketplace.status` and `marketplace.catalog` reads and `marketplace.install` / `marketplace.setEnabled` / `marketplace.uninstall` writes back the Web settings panel.
 
 ```ts
 import { defaultStatePath, installPlugin, loadState } from '@deepseek-ai/dsh-host-plugin-marketplace'
@@ -76,15 +76,27 @@ Because the root is flat, two plugins that ship a skill entry of the same name a
 
 Two cleanup functions split by what they may delete. `removeMaterializedSkills` removes only the entry names it is given, live or parked, and is what a sync uses to drop a name a plugin stopped shipping. `removePluginSkills` is uninstall's wider cleanup: those same names plus the parking directory and the plugin-scoped container an earlier layout wrote. The split is load-bearing because the parking directory is a DISABLED plugin's only copy of its skills, so folding it into the sync path deletes them the first time a stale name is dropped.
 
+### The catalog read
+
+`src/catalog.ts` owns one read that both faces call. It visits every registered marketplace in stored order and returns one row per entry: the fields a list renders, the name the supplying manifest declares, whether this package's pin rule accepts the source, whether an installed record already exists, and the warnings the entry carried.
+
+A registration that cannot be read becomes one reported failure carrying its registration name and the fetch layer's reason, and the loop continues to the next one. The CLI's `search` prints each failure to stderr and still prints the matches the readable registrations supplied, so silence never reads as "this marketplace lists nothing". An empty query lists everything, and a deployment with no registration resolves empty rather than refusing — `search` keeps its own separate refusal for that case.
+
+The read accepts an optional fetch budget, and `marketplace.catalog` passes none: every manifest read uses the fetch layer's own budget. It is the only read on this Remote face that reaches the network, which is why the panel asks for it on request rather than when its tab opens.
+
+The traversal is deliberately not shared with `resolveEntry`, which resolves one name and stops at the first marketplace listing it. A catalog must visit every registration, and merging the two would make every install fetch every registered marketplace to save the read path a loop.
+
 ### The Remote face
 
-The Web settings panel talks to `MarketplaceGateway` (Remote namespace `marketplace`): `marketplace.status` reads, and `marketplace.setEnabled` and `marketplace.uninstall` write. Three rules hold across it.
+The Web settings panel talks to `MarketplaceGateway` (Remote namespace `marketplace`): `marketplace.status` and `marketplace.catalog` read, and `marketplace.install`, `marketplace.setEnabled` and `marketplace.uninstall` write. Four rules hold across it.
 
-**Reads never write.** `marketplace.status` resolves ownership from the state record and the plugin's own `skills/` directory, and enablement from the patch layer. It does not materialize, so opening a settings tab cannot copy or move anything on the user's disk.
+**Reads never write.** `marketplace.status` resolves ownership from the state record and the plugin's own `skills/` directory, and enablement from the patch layer. It does not materialize, so opening a settings tab cannot copy or move anything on the user's disk. `marketplace.catalog` only fetches manifests.
 
-**A deployment decides whether writes exist.** The `allowMutations` config field (default `true`) is checked in the write path itself. The panel reads the same flag from the status snapshot and renders no controls when it is false, but the flag is enforced on every call: a hidden button is never the enforcement point.
+**A deployment decides whether writes exist.** The `allowMutations` config field (default `true`) is checked in the write path itself. The panel reads the same flag from the status snapshot and renders no controls when it is false, but the flag is enforced on every call: a hidden button is never the enforcement point. Browsing is not a mutation, so `marketplace.catalog` answers on a read-only deployment while `marketplace.install` refuses with `marketplace/read-only`.
 
-**One implementation per operation.** Both faces call `setPluginEnabled` in `src/operations.ts`, so the CLI and the panel cannot disagree about which rows and discovery-root entries a plugin owns. Each write also returns the status it produced, so the panel renders post-write truth rather than issuing a second read that could race the write it just made.
+**One implementation per operation.** The CLI and the panel call `setPluginEnabled` in `src/operations.ts` for enablement, `catalog` in `src/catalog.ts` for the read, and `installPlugin` for an install, so the two faces cannot disagree about which rows and discovery-root entries a plugin owns or what a marketplace offers; `marketplace.install` adds only the Remote checks around that call. Each write also returns the status it produced, so the panel renders post-write truth rather than issuing a second read that could race the write it just made, and `marketplace.install` returns the recorded `sha` and the install's warnings alongside it.
+
+**A refusal keeps its identity across the wire.** `InstallError` carries a structural `reason` from the closed `InstallRefusal` set — `name-unusable`, `no-marketplace`, `not-found`, or `unpinned` — and the gateway maps it to a `RemoteErrorDetailsMap` code rather than matching the message text, so a reworded message cannot change what a client is told. An unusable name is `gateway/bad-request`, an empty registry or an unlisted name is `marketplace/not-found`, and a source with no `sha` that the request did not accept is `marketplace/unpinned`. A fault after admission is not a refusal at all: it is `marketplace/install-failed`, carrying the fault's own reason.
 
 The status view reports two facts per installed plugin that the patch layer cannot answer. `skillIds` names the discovery-root entries the plugin owns, and `skills` says where they are: `live` in the discovery root, `parked` under `<root>/.disabled/<plugin>/`, or `none` when the plugin ships no discoverable skill. Skills mount by discovery rather than by a row, so their placement has no patch-layer representation at all.
 
@@ -105,7 +117,8 @@ None of those entries declares a `sha`, so the pin rule still declines them by d
 | `src/patch-layer.ts` | composing rows into the user patch layer; the only writer |
 | `src/materialize.ts` | capability → surface mapping: MCP normalization, flat skill materialization, and the ownership-aware cleanup |
 | `src/operations.ts` | the write operations the CLI and the Remote face share |
-| `src/gateway.ts` | the Remote face: one status read and two gated write verbs |
+| `src/catalog.ts` | the catalog read the CLI's `search` and `marketplace.catalog` share |
+| `src/gateway.ts` | the Remote face: two reads and three gated write verbs |
 | `src/sync.ts` | state → materialize → patch layer |
 | `src/install.ts` | resolve → fetch → record → sync |
 | `src/marketplace-command.ts` | the CLI face |
@@ -157,7 +170,12 @@ Stable while the enabled server set is unchanged. Adding or removing a server ch
 - **An unpinned entry needs an explicit opt-in.** 52 of the 294 official entries name their content relative to the marketplace repository and none of them carries a `sha`. The path is resolved against that repository, and the pin rule still declines the install unless `--allow-unpinned` is passed — which resolves the source's ref to the commit it names *now* and records that. The install is then one specific revision and can be held to it, but it is a snapshot of a ref, not a guarantee the next install matches. Entries pinned to a moving ref are unaffected either way.
 - **The manifest fetch is GitHub-shaped.** A repository url is resolved to its `raw/main` manifest; another host needs an explicit manifest url.
 - **A skill entry must be discoverable at the top of the plugin's `skills/` directory.** An entry that is a directory without `SKILL.md`, or a file that is not Markdown, is reported and skipped instead of copied: `skill-filesystem` reads exactly one level, so copying it into the discovery root would produce a file the model is never offered.
-- **The Remote face manages installed plugins; it cannot install one.** Adding and searching happen on the CLI. An install resolves a source, fetches it, pins a revision, and reports the pin — a progress and partial-failure story that a single request and response does not carry.
+- **The catalog is a snapshot.** A marketplace can change between the read and the click. `marketplace.install` re-resolves the entry from the registry at install time, so the recorded pin is the current one rather than what the panel displayed, and a name that disappeared between the two reads fails as `marketplace/not-found` instead of installing something else.
+- **An unpinned install records a commit the user never saw.** The opt-in resolves the source's ref at install time and records that commit; the recorded revision is chosen by the remote at the moment of install.
+- **Browsing is not gated by `allowMutations`.** A read-only deployment still performs the catalog's network fetch. Browsing is not a mutation, so the read-only posture does not make the panel network-silent.
+- **Registering a marketplace stays on the CLI.** The Remote face lists the registrations and installs from them; adding one is `dsh plugin marketplace add` in a terminal.
+- **The catalog read can be slow or fail for reasons outside the machine.** A catalog failure therefore reaches the panel even though nothing is wrong with the user's plugins, which is the price of asking a marketplace what it offers.
+- **The search predicate exists on both faces.** The CLI filters on the Host and the panel filters in the browser, because they are different programs and `./types` is types-only by rule. Both pin the same substring test over the same four fields, so a drift is a test failure rather than a silent difference.
 - **Comment preservation is best-effort.** A patch-layer write re-serializes the file, and a full dump cannot keep the user's comments. Writes happen only when the composed rows actually change, and change detection is canonicalized so key order alone never triggers one.
 
 ### Dev Note

@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-本包解析 Claude 兼容的 `marketplace.json`，按钉住的 commit 抓取一个插件，并在不让核心认识外部 schema 的前提下把它调和进 DSH：插件携带的每个 skill 都**平铺**落地到发现根目录，每个 `.mcp.json` 服务器成为一条 loader 行。启用是一个动词、两种机制——行上的 `disabled` 标志，以及把 skill 移出发现树。所有写入都只限于 marketplace 自己拥有的条目，因此用户自己的 patch 与 skill 永远不会被改写。命令行与 Web 设置面板经由同一份共享实现驱动这些操作，而部署可以用 `allowMutations` 关掉面板的写入动词。
+本包解析 Claude 兼容的 `marketplace.json`，浏览已注册的 marketplace 提供的内容，按钉住的 commit 安装其中一个插件，并在不让核心认识外部 schema 的前提下把它调和进 DSH：插件携带的每个 skill 都**平铺**落地到发现根目录，每个 `.mcp.json` 服务器成为一条 loader 行。启用是一个动词、两种机制：行上的 `disabled` 标志，以及把 skill 移出发现范围。所有写入都只限于 marketplace 自己拥有的条目，因此用户自己的 patch 与 skill 永远不会被改写。命令行与 Web 设置面板共用同一份实现，而部署可以用 `allowMutations` 关掉面板的写入动词。
 
 ## 目录
 
@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-当用户要求 DSH 从插件 marketplace 安装东西时调用本包。CLI（命令行界面）面是 `dsh plugin marketplace <add|list|search|install|uninstall|installed|enable|disable>`；程序化面是 `installPlugin`、`sync` 与 `setEnabled`；Remote 面是 `MarketplaceGateway`，它用 `marketplace.status` 读取、用 `marketplace.setEnabled` 与 `marketplace.uninstall` 写入，支撑 Web 设置面板。
+当用户要求 DSH 从插件 marketplace 安装东西时调用本包。CLI（命令行界面）面是 `dsh plugin marketplace <add|list|search|install|uninstall|installed|enable|disable>`；程序化面是 `catalog`、`installPlugin`、`sync` 与 `setEnabled`；Remote 面是 `MarketplaceGateway`，它用 `marketplace.status` 与 `marketplace.catalog` 读取、用 `marketplace.install`、`marketplace.setEnabled` 与 `marketplace.uninstall` 写入，支撑 Web 设置面板。
 
 ```ts
 import { defaultStatePath, installPlugin, loadState } from '@deepseek-ai/dsh-host-plugin-marketplace'
@@ -77,15 +77,27 @@ skill 与 loader 行的行为差异足够大，把它们合并起来在两个方
 
 两个清理函数按「允许删什么」分工。`removeMaterializedSkills` 只删除传给它的那些条目名（存活态或停放态），sync 用它丢弃插件不再提供的名称。`removePluginSkills` 是卸载用的更宽清理：同样那些名称，加上停放目录与更早的布局所写的按插件隔离容器。这个分工是关键：停放目录是**已停用**插件唯一的 skill 副本，把它并进 sync 路径，会在第一次丢弃陈旧名称时就把它们删掉。
 
+### catalog 读取
+
+`src/catalog.ts` 拥有一份两个面都会调用的读取。它按存储顺序走访每个已注册的 marketplace，并为每个条目回传一列：列表要渲染的栏位、提供该条目的 manifest 所声明的名称、本包的 pin 规则是否接受该来源、是否已存在安装记录，以及条目自带的警告。
+
+读不动的注册变成一条携带其注册名与 fetch 层原因的失败，循环随即继续下一个。CLI 的 `search` 会把每条失败打印到 stderr，并照旧打印可读注册所提供的匹配结果，因此沉默永远不会被读成「这个 marketplace 什么都没列」。空查询列出全部；没有任何注册的部署则解析为空而不是拒绝——`search` 对那种情况保留自己单独的拒绝。
+
+这次读取接受一个可选的 fetch 预算，而 `marketplace.catalog` 不传：每次 manifest 读取都使用 fetch 层自己的预算。它是这个 Remote 面上唯一会触达网络的读取，因此面板按需索取，而不是在分页打开时载入。
+
+该遍历刻意不与 `resolveEntry` 共用——后者解析一个名称，并在第一个列出它的 marketplace 就停下。catalog 必须走完每一个注册，而合并两者会让每次安装都去抓取每一个已注册的 marketplace，只为在读路径省下一个循环。
+
 ### Remote 界面
 
-Web 设置面板与 `MarketplaceGateway`（Remote 命名空间 `marketplace`）通信：`marketplace.status` 读取，`marketplace.setEnabled` 与 `marketplace.uninstall` 写入。有三条规则贯穿其中。
+Web 设置面板与 `MarketplaceGateway`（Remote 命名空间 `marketplace`）通信：`marketplace.status` 与 `marketplace.catalog` 读取，`marketplace.install`、`marketplace.setEnabled` 与 `marketplace.uninstall` 写入。有四条规则贯穿其中。
 
-**读取永不写入。** `marketplace.status` 从状态记录与插件自己的 `skills/` 目录解析拥有关系，并从 patch 层解析启用状态。它不做落地，因此打开一个设置标签页不会在用户磁盘上复制或移动任何东西。
+**读取永不写入。** `marketplace.status` 从状态记录与插件自己的 `skills/` 目录解析拥有关系，并从 patch 层解析启用状态。它不做落地，因此打开一个设置标签页不会在用户磁盘上复制或移动任何东西。`marketplace.catalog` 只抓取 manifest。
 
-**写入是否存在由部署决定。** `allowMutations` 组态栏位（预设 `true`）在写入路径本身检查。面板会从状态快照读到同一个旗标，并在其为 false 时不渲染任何控件，但该旗标在每次调用时都被强制执行：隐藏的按钮永远不是强制点。
+**写入是否存在由部署决定。** `allowMutations` 组态栏位（预设 `true`）在写入路径本身检查。面板会从状态快照读到同一个旗标，并在其为 false 时不渲染任何控件，但该旗标在每次调用时都被强制执行：隐藏的按钮永远不是强制点。浏览不是变更，因此在只读部署上 `marketplace.catalog` 照常应答，而 `marketplace.install` 以 `marketplace/read-only` 拒绝。
 
-**每个操作只有一份实现。** 两个面都调用 `src/operations.ts` 的 `setPluginEnabled`，因此命令行与面板不可能对「该插件拥有哪些行与发现根目录条目」产生分歧。每次写入还会返回它产生的那份状态，因此面板渲染的是写入之后的事实，而不是再发一次可能与刚完成的写入竞争的读取。
+**每个操作只有一份实现。** 命令行与面板在启用上调用 `src/operations.ts` 的 `setPluginEnabled`，在读取上调用 `src/catalog.ts` 的 `catalog`，在安装上调用 `installPlugin`，因此两个面不可能对「该插件拥有哪些行与发现根目录条目」或「marketplace 提供什么」产生分歧；`marketplace.install` 只是在那次调用外面加上 Remote 层的检查。每次写入还会返回它产生的那份状态，因此面板渲染的是写入之后的事实，而不是再发一次可能与刚完成的写入竞争的读取；`marketplace.install` 还会一并返回记录的 `sha` 与该次安装的警告。
+
+**拒绝在 wire 上保持自己的身份。** `InstallError` 携带来自封闭集合 `InstallRefusal` 的结构性 `reason`——`name-unusable`、`no-marketplace`、`not-found` 或 `unpinned`——gateway 把它映射成 `RemoteErrorDetailsMap` 的代码，而不是比对消息文本，因此改写措辞无法改变客户端被告知的内容。不可用的名称是 `gateway/bad-request`，空注册或未列出的名称是 `marketplace/not-found`，请求未接受的、没有 `sha` 的来源是 `marketplace/unpinned`。准入之后的故障根本不是拒绝：它是 `marketplace/install-failed`，携带该故障自己的原因。
 
 状态视图报告每个已安装插件的两项事实，而这两项 patch 层答不出来。`skillIds` 指名该插件拥有的发现根目录条目，`skills` 说明它们在哪：`live` 在发现根目录、`parked` 在 `<root>/.disabled/<plugin>/` 之下，或 `none` 表示该插件不提供任何可被发现的 skill。skill 靠发现挂载而非靠行，因此它的位置在 patch 层里根本没有对应表示。
 
@@ -106,7 +118,8 @@ manifest 条目可以用相对于 marketplace 仓库的路径指名内容（`./p
 | `src/patch-layer.ts` | 把行组合进用户 patch 层；唯一的写入方 |
 | `src/materialize.ts` | 能力 → 落地面的映射：MCP 规范化、skill 平铺落地，以及带拥有关系的清理 |
 | `src/operations.ts` | 命令行与 Remote 面共用的写入操作 |
-| `src/gateway.ts` | Remote 面：一次状态读取与两个受闸门的写入动词 |
+| `src/catalog.ts` | 命令行 `search` 与 `marketplace.catalog` 共用的 catalog 读取 |
+| `src/gateway.ts` | Remote 面：两个读取与三个受闸门的写入动词 |
 | `src/sync.ts` | 状态 → materialize → patch 层 |
 | `src/install.ts` | 解析 → 抓取 → 记录 → sync |
 | `src/marketplace-command.ts` | CLI 面 |
@@ -162,7 +175,12 @@ manifest 条目可以用相对于 marketplace 仓库的路径指名内容（`./p
 - **未钉住的条目需要显式 opt-in。** 官方 294 个条目中有 52 个以相对于 marketplace 仓库的路径指名内容，且没有一个带 `sha`。该路径会对那个仓库解析，但除非传入 `--allow-unpinned`，pin 规则仍会拒绝安装；该旗标会把来源的 ref 解析成它*现在*指向的 commit 并记录下来。这次安装因此是一个具体的 revision，可以要求它始终保持在该 revision 上，但它是某个 ref 的快照，并不保证下一次安装仍然一致。钉在会移动的 ref 上的条目则无论如何都不受影响。
 - **manifest 抓取是 GitHub 形状的。** repository url 会被解析成它的 `raw/main` manifest；其他主机则需要显式的 manifest url。
 - **skill 条目必须在插件的 `skills/` 目录顶层就能被发现。** 一个不含 `SKILL.md` 的目录，或一个非 Markdown 的文件，会被报告并跳过而不是复制：`skill-filesystem` 恰好只读一层，把它复制进发现根目录只会产出一个模型永远看不到的文件。
-- **Remote 界面管理已安装的插件，但无法安装。** 新增与搜索留在命令行。一次安装会解析来源、抓取它、钉住一个 revision 并报告该 pin——那是一套单一请求与回应承载不了的进度与部分失败交代。
+- **catalog 是一份快照。** marketplace 可能在读取与点击之间改变。`marketplace.install` 会在安装时从注册重新解析该条目，因此记录的 pin 是当下的那个、而不是面板显示的；一个在两次读取之间消失的名称会以 `marketplace/not-found` 失败，而不是安装了别的东西。
+- **未钉 sha 的安装会记录一个使用者没看过的 commit。** 该选项在安装时解析来源的 ref 并记录那个 commit；被记录的 revision 是由远端在安装当下选定的。
+- **浏览不受 `allowMutations` 管辖。** 只读部署仍会执行 catalog 的网络抓取。浏览不是变更，因此只读姿态并不会让面板在网络层面静默。
+- **注册 marketplace 仍留在命令行。** Remote 面列出已有的注册并从中安装；新增一个要靠在终端里执行 `dsh plugin marketplace add`。
+- **catalog 读取可能变慢，或因机器之外的原因失败。** 因此即使使用者的插件毫无问题，catalog 的失败也会抵达面板，这是向 marketplace 询问它提供什么所要付的代价。
+- **搜索判定在两个面上各有一份。** 命令行在 Host 端过滤，面板在浏览器过滤，因为它们是不同的程序，而按规则 `./types` 只放类型。双方用同样的四个栏位钉住同一次子字串测试，因此分歧会是测试失败而不是无声的差异。
 - **注释保留是尽力而为。** 写 patch 层会重新序列化该文件，而完整 dump 留不住用户的注释。只有组合出的行确实发生变化时才会写入，且变更检测经过规范化，因此单是键序不同永远不会触发写入。
 
 <a id="dev-note"></a>

@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript (strict, ESM, `.ts` on relative imports), Cordis plugin services and effects, Typert `@Remote` generated client face, React 18 + CSS Modules, Vitest (node environment, `// @vitest-environment jsdom` pragma per file where needed).
 
-**Spec:** [`.agents/notes/proposed/feature/2026-09-12-marketplace-catalog-and-install.md`](.agents/notes/proposed/feature/2026-09-12-marketplace-catalog-and-install.md)
+**Spec:** [`.agents/notes/implemented/feature/2026-09-12-marketplace-catalog-and-install.md`](.agents/notes/implemented/feature/2026-09-12-marketplace-catalog-and-install.md)
 
 ## Global Constraints
 
