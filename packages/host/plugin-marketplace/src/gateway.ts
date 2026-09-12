@@ -3,15 +3,16 @@
  *
  * READS NEVER WRITE. `status` resolves enablement from the patch layer and
  * ownership names from state, and never materializes: opening a settings tab
- * must not copy or move anything on the user's disk. The two mutations are
- * separate methods that say what they do.
+ * must not copy or move anything on the user's disk. The mutations are separate
+ * methods that say what they do.
  *
  * The mutations are gated HERE, in the operation that makes the decision, not by
  * hiding a button in the panel:
  *  - `allowMutations` (Config, default true) turns the write surface off for a
  *    deployment that wants a read-only panel.
- *  - Both call the same `operations.ts` entry point the CLI calls, so the two
- *    faces cannot disagree about what a plugin owns.
+ *  - Each calls the same entry point the CLI calls — `operations.ts` for
+ *    enablement, `install.ts` for install — so the two faces cannot disagree
+ *    about what a plugin owns.
  *  - Every call returns the status it produced, so the panel renders post-write
  *    truth without a second round trip that could race the write it just made.
  *
@@ -28,8 +29,9 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { uninstallPlugin } from './install.ts'
+import { Remote, RemoteError, TypertRemoteService, type RemoteErrorCode } from '@deepseek-ai/dsh-typert-protocol'
+import { catalog } from './catalog.ts'
+import { InstallError, installPlugin, uninstallPlugin, type InstallRefusal } from './install.ts'
 import { readPluginMcp, sanitizeServerName, skillEntryNames, skillsEnabled, type MaterializeOptions } from './materialize.ts'
 import { setPluginEnabled } from './operations.ts'
 import { parsePatchLayer, readEnabled } from './patch-layer.ts'
@@ -38,9 +40,12 @@ import type { SyncOptions } from './sync.ts'
 import type {
   InstalledPluginView,
   InstalledStateView,
+  MarketplaceCatalogView,
   MarketplaceStatusView,
   PluginEnableRequest,
   PluginEnablementView,
+  PluginInstallRequest,
+  PluginInstallResultView,
   PluginRemovalView,
   PluginUninstallRequest,
   SkillsStateView,
@@ -68,6 +73,14 @@ const PROFILE_PATCH_FILENAME = 'cordis.patch.yml'
 /** The parsed patch rows `readEnabled` accepts, named once for its two callers. */
 type PatchRows = Parameters<typeof readEnabled>[0]
 
+/** Wire code for each refusal an install can raise. */
+const INSTALL_REFUSAL_CODE: Record<InstallRefusal, RemoteErrorCode> = {
+  'name-unusable': 'gateway/bad-request',
+  'no-marketplace': 'marketplace/not-found',
+  'not-found': 'marketplace/not-found',
+  'unpinned': 'marketplace/unpinned',
+}
+
 /**
  * Where the panel reads from and writes to.
  *
@@ -87,7 +100,7 @@ export interface Config {
    */
   patchLayerPath?: string
   /**
-   * Whether `setEnabled` and `uninstall` are served at all.
+   * Whether the write methods are served at all.
    *
    * A deployment that shares one harness home between users, or that wants the
    * panel to stay a pure view, sets this false: the methods then refuse and the
@@ -133,7 +146,7 @@ function requireBoolean(value: unknown, field: string): boolean {
   return value
 }
 
-/** The marketplace Remote face: one status read and the writes the panel offers. */
+/** The marketplace Remote face: the reads and the writes the panel offers. */
 export class MarketplaceGateway extends TypertRemoteService {
   static Config: z<Config> = z.object({
     harnessHome: z.string(),
@@ -246,6 +259,60 @@ export class MarketplaceGateway extends TypertRemoteService {
     })
     if (removed) this.notifyCommandSurface()
     return { plugin, removed, status: await this.status() }
+  }
+
+  /**
+   * Read what the registered marketplaces offer.
+   *
+   * A read, so a read-only deployment is served: browsing is not a mutation.
+   * It is the only method here that reaches the network, which is why the
+   * panel asks for it on request rather than when its tab opens.
+   *
+   * @returns every entry from every readable registration, plus the
+   *   registrations that could not be read.
+   */
+  @Remote('catalog')
+  async catalog(): Promise<MarketplaceCatalogView> {
+    const result = await catalog(this.readState())
+    return {
+      rows: result.rows.map(row => ({ ...row, tags: [...row.tags], warnings: [...row.warnings] })),
+      failed: result.failed.map(failure => ({ ...failure })),
+    }
+  }
+
+  /**
+   * Install one plugin and reconcile it, returning the status that produced.
+   *
+   * @param request - the plugin name and whether an unpinned source is accepted.
+   * @returns what the install recorded and the resulting status.
+   * @throws {RemoteError} `marketplace/read-only` when this deployment refuses
+   *   writes, or the mapped refusal when the install was not admitted.
+   */
+  @Remote('install')
+  async install(request: PluginInstallRequest): Promise<PluginInstallResultView> {
+    this.requireMutations()
+    const plugin = requirePluginName(request.plugin, 'install')
+    let result: Awaited<ReturnType<typeof installPlugin>>
+    try {
+      result = await installPlugin(plugin, {
+        state: this.readState(),
+        statePath: this.statePath,
+        sync: this.writeTarget(),
+        ...(request.allowUnpinned === true ? { allowUnpinned: true } : {}),
+      })
+    } catch (error) {
+      if (error instanceof InstallError) throw new RemoteError(INSTALL_REFUSAL_CODE[error.reason], error.message, { plugin })
+      throw new RemoteError('marketplace/install-failed', error instanceof Error ? error.message : String(error), {
+        plugin,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+    }
+    return {
+      plugin: result.entry.plugin,
+      ...(result.entry.sha !== undefined ? { sha: result.entry.sha } : {}),
+      warnings: [...result.warnings],
+      status: await this.status(),
+    }
   }
 
   /** The patch layer and skills root both write paths target. */

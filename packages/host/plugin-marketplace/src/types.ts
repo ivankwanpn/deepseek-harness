@@ -34,6 +34,12 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'marketplace/read-only': {}
     /** The named plugin has no installed record, so there is nothing to toggle or remove. */
     'marketplace/not-installed': { readonly plugin: string }
+    /** No registered marketplace lists the requested plugin. */
+    'marketplace/not-found': { readonly plugin: string }
+    /** The entry's source declares no `sha` and the request did not accept one. */
+    'marketplace/unpinned': { readonly plugin: string }
+    /** The install failed after it was admitted: a fetch or filesystem fault. */
+    'marketplace/install-failed': { readonly plugin: string; readonly reason: string }
   }
 }
 
@@ -148,5 +154,74 @@ export interface PluginRemovalView {
   /** True when an installed record existed and was removed. */
   removed: boolean
   /** The status after the write, so the panel needs no second round trip. */
+  status: MarketplaceStatusView
+}
+
+/** One catalog row, as the panel renders it. */
+export interface CatalogRowView {
+  /** Plugin name as its marketplace declares it. */
+  plugin: string
+  /** Marketplace this entry came from. */
+  marketplace: string
+  /** One-line summary the marketplace published. */
+  description?: string
+  /** Category the marketplace filed it under. */
+  category?: string
+  /** Version the marketplace declared, not the pin. */
+  version?: string
+  /** Free-form tags the marketplace published. */
+  tags: string[]
+  /** Whether the Host's pin rule accepts the source. Decided by the Host, never by the panel. */
+  installable: boolean
+  /** Whether an installed record already exists for this name. */
+  installed: boolean
+  /** Diagnostics the entry carried, including a missing pin. */
+  warnings: string[]
+}
+
+/** One registration the Host could not read. */
+export interface MarketplaceFailureView {
+  /** Marketplace that failed, by its registration name. */
+  marketplace: string
+  /** Why it failed, as the fetch layer reported it. */
+  reason: string
+}
+
+/**
+ * Everything the panel's available-plugins section renders from one read.
+ *
+ * `failed` is reported rather than thrown: one unreachable registration must
+ * not blank the rows the readable ones supplied.
+ */
+export interface MarketplaceCatalogView {
+  /** Every entry from every readable registration, in registration order. */
+  rows: CatalogRowView[]
+  /** Registrations that could not be read. */
+  failed: MarketplaceFailureView[]
+}
+
+/** One plugin to install. */
+export interface PluginInstallRequest {
+  /** Plugin name as its marketplace declares it. */
+  plugin: string
+  /**
+   * Accept a source that declares no `sha`, recording the commit its ref
+   * resolves to now.
+   *
+   * Absent means refuse. The panel sets it only after the user acknowledges
+   * the entry's missing pin.
+   */
+  allowUnpinned?: boolean
+}
+
+/** What one install produced. */
+export interface PluginInstallResultView {
+  /** Plugin the call addressed. */
+  plugin: string
+  /** Commit the install recorded; absent only for a local source. */
+  sha?: string
+  /** What the install wants to tell the user, verbatim from the Host. */
+  warnings: string[]
+  /** The status after the install, so the panel needs no second round trip. */
   status: MarketplaceStatusView
 }

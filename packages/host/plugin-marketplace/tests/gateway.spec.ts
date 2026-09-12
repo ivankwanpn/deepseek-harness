@@ -9,13 +9,14 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { remoteMethods } from '@deepseek-ai/dsh-typert-protocol'
 import MarketplaceGateway from '../src/gateway.ts'
 import { disabledSkillsDir, materializeEntry, skillsRootDir } from '../src/materialize.ts'
+import type { PluginSource } from '../src/parse.ts'
 import { serializePatchLayer } from '../src/patch-layer.ts'
-import { emptyState, rowIdFor, saveState, type InstalledEntry } from '../src/state.ts'
+import { emptyState, rowIdFor, saveState, upsertMarketplace, type InstalledEntry } from '../src/state.ts'
 import type { MarketplaceStatusView } from '../src/types.ts'
 
 let scratch: string
@@ -25,6 +26,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.unstubAllGlobals()
   rmSync(scratch, { recursive: true, force: true })
 })
 
@@ -80,7 +82,7 @@ function snapshotTree(root: string): string[] {
 }
 
 describe('marketplace Remote face', () => {
-  it('publishes the status read and the two write verbs under the marketplace namespace', async () => {
+  it('publishes the two reads and the three write verbs under the marketplace namespace', async () => {
     const { gateway } = await harness()
     expect(gateway.typertRemote).toMatchObject({
       serviceKey: 'marketplace',
@@ -90,6 +92,8 @@ describe('marketplace Remote face', () => {
       { method: 'status', invocation: { kind: 'direct' } },
       { method: 'setEnabled', invocation: { kind: 'direct' } },
       { method: 'uninstall', invocation: { kind: 'direct' } },
+      { method: 'catalog', invocation: { kind: 'direct' } },
+      { method: 'install', invocation: { kind: 'direct' } },
     ])
     // The generated client face is what the panel compiles against.
     const remote = gateway.typertRemote as unknown as { methods?: unknown }
@@ -386,5 +390,141 @@ describe('marketplace write face', () => {
     await expect(gateway.setEnabled({ plugin: '  ', enabled: true })).rejects.toThrow(/non-blank plugin name/u)
     await expect(gateway.setEnabled({ plugin: 'ghost', enabled: 'yes' as never })).rejects.toThrow(/boolean enabled/u)
     await expect(gateway.uninstall({ plugin: '' })).rejects.toThrow(/non-blank plugin name/u)
+  })
+})
+
+const PINNED = { source: 'git', url: 'https://example.test/pinned.git', sha: 'a'.repeat(40) }
+const LOOSE = { source: 'git', url: 'https://example.test/loose.git' }
+const MANIFEST = 'https://example.test/marketplace.json'
+
+/**
+ * Stand in for the one step an install cannot take without a network: the clone.
+ *
+ * `fetchPlugin` shells out to git, so a pinned git source is the half no unit
+ * test here can reach; everything install does with what the fetch hands back is
+ * the same either way, and that is what the success case pins. Every other
+ * export stays real, so capabilities and warnings are still read from the tree
+ * the fetch left on disk.
+ */
+vi.mock('../src/git.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/git.ts')>()
+  const { mkdirSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  return {
+    ...actual,
+    fetchPlugin: async (source: PluginSource, destination: string) => {
+      mkdirSync(join(destination, 'commands'), { recursive: true })
+      return {
+        root: destination,
+        capabilities: actual.detectCapabilities(destination),
+        resolvedSha: source.kind === 'git' ? (source.sha ?? '') : '',
+      }
+    },
+  }
+})
+
+/** Register one marketplace in the scratch state and serve its manifest. */
+async function withMarketplace(plugins: readonly object[]): Promise<void> {
+  mkdirSync(join(scratch, 'marketplace'), { recursive: true })
+  const state = upsertMarketplace(emptyState(), 'test', MANIFEST)
+  saveState(join(scratch, 'marketplace', 'state.json'), state)
+  vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ name: 'test', plugins }), { status: 200 }))
+}
+
+describe('marketplace.catalog', () => {
+  it('answers on a read-only deployment, because browsing is a read', async () => {
+    const { gateway } = await harness({ allowMutations: false })
+    await withMarketplace([{ name: 'pinned', source: PINNED }])
+    const view = await gateway.catalog()
+    expect(view.rows.map(row => row.plugin)).toEqual(['pinned'])
+  })
+
+  it('restates the catalog rows as the wire contract', async () => {
+    const { gateway } = await harness()
+    await withMarketplace([{ name: 'loose', source: LOOSE }])
+    const view = await gateway.catalog()
+    expect(view.rows[0]).toMatchObject({ plugin: 'loose', installable: false, installed: false })
+    expect(view.failed).toEqual([])
+  })
+
+  it('reports a registration it could not read without dropping the readable rows', async () => {
+    const { gateway } = await harness()
+    mkdirSync(join(scratch, 'marketplace'), { recursive: true })
+    // The unreachable registration is FIRST, so a non-empty `rows` can only mean
+    // the read continued past it.
+    saveState(
+      join(scratch, 'marketplace', 'state.json'),
+      upsertMarketplace(upsertMarketplace(emptyState(), 'down', 'https://example.test/down.json'), 'test', MANIFEST),
+    )
+    vi.stubGlobal('fetch', async (url: string) => {
+      if (url !== MANIFEST) throw new TypeError('connection refused')
+      return new Response(JSON.stringify({ name: 'test', plugins: [{ name: 'pinned', source: PINNED }] }), { status: 200 })
+    })
+
+    const view = await gateway.catalog()
+    expect(view.failed).toEqual([
+      { marketplace: 'down', reason: expect.stringContaining('connection refused') },
+    ])
+    expect(view.rows.map(row => row.plugin)).toEqual(['pinned'])
+  })
+})
+
+describe('marketplace.install', () => {
+  it('refuses on a read-only deployment', async () => {
+    const { gateway } = await harness({ allowMutations: false })
+    await withMarketplace([{ name: 'pinned', source: PINNED }])
+    await expect(gateway.install({ plugin: 'pinned' })).rejects.toMatchObject({ code: 'marketplace/read-only' })
+  })
+
+  it('refuses a name no marketplace lists', async () => {
+    const { gateway } = await harness()
+    await withMarketplace([{ name: 'pinned', source: PINNED }])
+    await expect(gateway.install({ plugin: 'absent' })).rejects.toMatchObject({ code: 'marketplace/not-found' })
+  })
+
+  // The opt-in half of this refusal needs a real git remote, so it is checked by
+  // Task 8's manual pass rather than here.
+  it('refuses an unpinned entry', async () => {
+    const { gateway } = await harness()
+    await withMarketplace([{ name: 'loose', source: LOOSE }])
+    await expect(gateway.install({ plugin: 'loose' })).rejects.toMatchObject({ code: 'marketplace/unpinned' })
+  })
+
+  it('returns what the install recorded and the status that produced', async () => {
+    const { gateway } = await harness()
+    await withMarketplace([{ name: 'pinned', source: PINNED }])
+
+    const result = await gateway.install({ plugin: 'pinned' })
+
+    expect(result).toMatchObject({ plugin: 'pinned', sha: PINNED.sha, warnings: [] })
+    // The status is the post-write one, so the panel needs no second round trip.
+    expect(result.status.installed[0]).toMatchObject({
+      plugin: 'pinned',
+      sha: PINNED.sha,
+      capabilities: ['commands'],
+    })
+  })
+
+  it('reports a fault after admission as install-failed', async () => {
+    const { gateway } = await harness()
+    mkdirSync(join(scratch, 'marketplace'), { recursive: true })
+    saveState(join(scratch, 'marketplace', 'state.json'), upsertMarketplace(emptyState(), 'test', MANIFEST))
+    vi.stubGlobal('fetch', async () => { throw new TypeError('connection refused') })
+
+    await expect(gateway.install({ plugin: 'pinned' })).rejects.toMatchObject({
+      code: 'marketplace/install-failed',
+      details: { plugin: 'pinned', reason: expect.stringContaining('connection refused') },
+    })
+  })
+
+  it('reports an unregistered marketplace as not-found', async () => {
+    const { gateway } = await harness()
+    await expect(gateway.install({ plugin: 'anything' })).rejects.toMatchObject({ code: 'marketplace/not-found' })
+  })
+
+  it('reports a name with no usable characters as a bad request, not a marketplace code', async () => {
+    const { gateway } = await harness()
+    await withMarketplace([{ name: '...', source: PINNED }])
+    await expect(gateway.install({ plugin: '...' })).rejects.toMatchObject({ code: 'gateway/bad-request' })
   })
 })
