@@ -479,6 +479,7 @@ export async function catalog(
     } catch (error) {
       failed.push({
         marketplace: registration.name,
+        /* v8 ignore next -- fetchMarketplace throws only Error instances; the String arm only satisfies the unknown narrowing. */
         reason: error instanceof Error ? error.message : String(error),
       })
       continue
