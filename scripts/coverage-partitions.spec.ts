@@ -428,6 +428,34 @@ describe('coverage partition coordinator', () => {
     }
   })
 
+  // A fork that dies mid-file costs that file its result and its coverage while
+  // the partition still exits zero, so nothing else answers for it. The gate then
+  // fails on a source file whose suite never ran.
+  it('refuses a partition whose forked worker died, naming the partition', async () => {
+    const root = await temporaryRoot()
+    const runCommand = vi.fn(async (command: CoverageCommand) => {
+      await writeBlob(command)
+      return command.label === 'partition 1/2'
+        ? {
+          exitCode: 0,
+          signalCode: null,
+          outputTail: '[vitest-pool]: Worker forks emitted error.\nCaused by: Error: Worker exited unexpectedly',
+        }
+        : passed
+    })
+    const coordinator = new CoveragePartitionCoordinator({
+      root,
+      partitions: 2,
+      pnpmEntrypoint: '/pnpm.cjs',
+      files: ['a.spec.ts', 'b.spec.ts'],
+      runCommand,
+    })
+
+    await expect(coordinator.run()).rejects.toThrow(
+      'coverage partitions: 1 partition process(es) lost a forked worker',
+    )
+  })
+
   it('merges normal test failures and returns their failed status', async () => {
     const root = await temporaryRoot()
     const reported = vi.spyOn(console, 'error').mockImplementation(() => undefined)
