@@ -10,7 +10,7 @@
  * applies on the Host: one substring test over the same four fields.
  */
 import type { ReactNode } from 'react'
-import type { MarketplaceCatalogView } from '@deepseek-ai/dsh-api-remotes/client'
+import type { CatalogRowView, MarketplaceCatalogView } from '@deepseek-ai/dsh-api-remotes/client'
 import { Button, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MarketplaceSettingsTabProps } from './MarketplaceSettingsTab.tsx'
 import css from './MarketplaceSettingsTab.module.css'
@@ -48,6 +48,14 @@ export interface CatalogSectionProps {
   readonly onRefresh: () => void
   /** Replace the filter text. */
   readonly onQuery: (next: string) => void
+  /** Whether this deployment accepts writes, so a row draws a control at all. */
+  readonly editable: boolean
+  /** Install one row's plugin; the tab decides whether that needs acknowledging. */
+  readonly onInstall: (row: CatalogRowView) => void
+  /** Plugin whose install is in flight, which locks every row's control. */
+  readonly busy: string | undefined
+  /** Install message per plugin name; a blank message is a cleared one. */
+  readonly failedFor: Readonly<Record<string, string>>
 }
 
 /**
@@ -55,7 +63,9 @@ export interface CatalogSectionProps {
  * @param props - the section's props, threaded from the tab's owner site.
  * @returns the section, in its unloaded or loaded form.
  */
-export function CatalogSection({ t, view, loading, failed, query, onLoad, onRefresh, onQuery }: CatalogSectionProps): ReactNode {
+export function CatalogSection({
+  t, view, loading, failed, query, onLoad, onRefresh, onQuery, editable, onInstall, busy, failedFor,
+}: CatalogSectionProps): ReactNode {
   if (view === undefined) {
     return (
       <section className={css.section}>
@@ -91,17 +101,39 @@ export function CatalogSection({ t, view, loading, failed, query, onLoad, onRefr
         ? <p className={css.muted}>{view.rows.length === 0 ? t('catalogEmpty') : t('catalogNoMatch')}</p>
         : (
           <ul className={css.list}>
-            {rows.map(row => (
-              <li key={`${row.marketplace}/${row.plugin}`} className={css.card}>
-                <div className={css.cardHead}>
-                  <span className={css.cardTitle}>{row.plugin}</span>
-                  {row.installed ? <Tag tone="info">{t('catalogInstalled')}</Tag> : null}
-                  {row.installable ? null : <Tag tone="warning">{t('catalogUnpinned')}</Tag>}
-                </div>
-                {row.description !== undefined ? <p className={css.detail}>{row.description}</p> : null}
-                {row.warnings.map(warning => <p key={warning} className={css.detail}>{warning}</p>)}
-              </li>
-            ))}
+            {rows.map((row) => {
+              // Blank is the writer's "no message": it clears what an earlier
+              // attempt left while the next one runs.
+              const installFailure = failedFor[row.plugin]
+              return (
+                <li key={`${row.marketplace}/${row.plugin}`} className={css.card}>
+                  <div className={css.cardHead}>
+                    <span className={css.cardTitle}>{row.plugin}</span>
+                    {row.installed ? <Tag tone="info">{t('catalogInstalled')}</Tag> : null}
+                    {row.installable ? null : <Tag tone="warning">{t('catalogUnpinned')}</Tag>}
+                  </div>
+                  {row.description !== undefined ? <p className={css.detail}>{row.description}</p> : null}
+                  {row.warnings.map(warning => <p key={warning} className={css.detail}>{warning}</p>)}
+                  {editable
+                    ? (
+                      <div className={css.controls}>
+                        <Button
+                          variant="outline"
+                          disabled={busy !== undefined || row.installed}
+                          onClick={() => { onInstall(row) }}
+                        >
+                          {t('catalogInstall')}
+                        </Button>
+                        {busy === row.plugin ? <span className={css.muted}>{t('catalogInstalling')}</span> : null}
+                      </div>
+                    )
+                    : null}
+                  {installFailure
+                    ? <p className={css.actionError}>{`${t('catalogInstallFailed')}${installFailure}`}</p>
+                    : null}
+                </li>
+              )
+            })}
           </ul>
         )}
     </section>

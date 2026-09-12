@@ -20,6 +20,7 @@ import type {
   MarketplaceCatalogView,
   MarketplaceStatusView,
   PluginEnablementView,
+  PluginInstallResultView,
   PluginRemovalView,
 } from '@deepseek-ai/dsh-host-plugin-marketplace/types'
 import { MarketplaceSettingsTab, type MarketplaceSettingsTabInjected } from './MarketplaceSettingsTab.tsx'
@@ -73,6 +74,8 @@ export function apply(ctx: ClientContext): void {
   const uninstall = (plugin: string): Promise<PluginRemovalView> =>
     unwrap(() => ctx.remote.marketplace.uninstall({ plugin }))
   const catalog = (): Promise<MarketplaceCatalogView> => unwrap(() => ctx.remote.marketplace.catalog())
+  const install = (plugin: string, allowUnpinned: boolean): Promise<PluginInstallResultView> =>
+    unwrap(() => ctx.remote.marketplace.install({ plugin, allowUnpinned }))
 
   ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
     name: 'settings.plugins.tab',
@@ -81,6 +84,6 @@ export function apply(ctx: ClientContext): void {
     order: 20,
     label: () => t('tab'),
     locale: NS,
-    inject: (): MarketplaceSettingsTabInjected => ({ status, setEnabled, uninstall, catalog }),
+    inject: (): MarketplaceSettingsTabInjected => ({ status, setEnabled, uninstall, catalog, install }),
   }, MarketplaceSettingsTab))
 }

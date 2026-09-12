@@ -58,6 +58,13 @@ export type MarketplaceLocaleKey =
   | 'catalogInstalled'
   | 'catalogInstall'
   | 'catalogUnpinned'
+  | 'catalogInstallUnpinnedTitle'
+  | 'catalogInstallUnpinnedDescription'
+  | 'catalogInstallUnpinnedAcknowledge'
+  | 'catalogInstallUnpinnedConfirm'
+  | 'catalogInstallUnpinnedCancel'
+  | 'catalogInstallFailed'
+  | 'catalogInstalling'
 
 /** Simplified Chinese dictionary. */
 export const zh: Record<MarketplaceLocaleKey, string> = {
@@ -110,6 +117,13 @@ export const zh: Record<MarketplaceLocaleKey, string> = {
   catalogInstalled: '已安装',
   catalogInstall: '安装',
   catalogUnpinned: '未钉选',
+  catalogInstallUnpinnedTitle: '这个条目没有钉选',
+  catalogInstallUnpinnedDescription: '插件市场没有为这个插件宣告 commit，因此取得的代码就是它的分支今天所指的内容。日后无法拿它与你当时检视的版本核对。',
+  catalogInstallUnpinnedAcknowledge: '我了解这个条目未钉选',
+  catalogInstallUnpinnedConfirm: '仍要安装',
+  catalogInstallUnpinnedCancel: '取消',
+  catalogInstallFailed: '安装失败：',
+  catalogInstalling: '安装中…',
 }
 
 /** English dictionary. */
@@ -163,4 +177,11 @@ export const en: Record<MarketplaceLocaleKey, string> = {
   catalogInstalled: 'installed',
   catalogInstall: 'Install',
   catalogUnpinned: 'no pin',
+  catalogInstallUnpinnedTitle: 'This entry has no pin',
+  catalogInstallUnpinnedDescription: 'The marketplace declares no commit for this plugin, so the code that arrives is whatever its branch points at today. It cannot be checked later against what you reviewed.',
+  catalogInstallUnpinnedAcknowledge: 'I understand this entry is unpinned',
+  catalogInstallUnpinnedConfirm: 'Install anyway',
+  catalogInstallUnpinnedCancel: 'Cancel',
+  catalogInstallFailed: 'Install failed: ',
+  catalogInstalling: 'Installing…',
 }

@@ -18,10 +18,12 @@ import type {
   MarketplaceCatalogView,
   MarketplaceStatusView,
   PluginEnablementView,
+  PluginInstallResultView,
   PluginRemovalView,
 } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
   PluginEnableRequest,
+  PluginInstallRequest,
   PluginUninstallRequest,
 } from '@deepseek-ai/dsh-host-plugin-marketplace/types'
 import { apply, inject, NS } from '../src/client/index.ts'
@@ -48,6 +50,7 @@ const ENABLEMENT: PluginEnablementView = {
   status: STATUS,
 }
 const REMOVAL: PluginRemovalView = { plugin: 'superpowers', removed: true, status: STATUS }
+const INSTALLED: PluginInstallResultView = { plugin: 'superpowers', sha: 'a'.repeat(40), warnings: [], status: STATUS }
 const REFUSED = { ok: false, error: { code: 'marketplace/read-only', message: 'refused' } } as const
 
 /** A client Cordis root carrying the slots, locale and marketplace Remote the plugin injects. */
@@ -69,6 +72,8 @@ async function bench() {
     uninstall: vi.fn<(request: PluginUninstallRequest) => Promise<Result<PluginRemovalView>>>()
       .mockResolvedValue({ ok: true, value: REMOVAL }),
     catalog: vi.fn<() => Promise<Result<MarketplaceCatalogView>>>().mockResolvedValue({ ok: true, value: CATALOG }),
+    install: vi.fn<(request: PluginInstallRequest) => Promise<Result<PluginInstallResultView>>>()
+      .mockResolvedValue({ ok: true, value: INSTALLED }),
   }
   ctx.provide('remote.marketplace', marketplace)
   return { ctx, slots: ctx.get('slots') as SlotRegistry, locale, marketplace }
@@ -110,14 +115,18 @@ describe('ui-settings-marketplace browser plugin', () => {
     await expect(injected.catalog()).resolves.toEqual(CATALOG)
     await expect(injected.setEnabled('superpowers', false)).resolves.toEqual(ENABLEMENT)
     await expect(injected.uninstall('superpowers')).resolves.toEqual(REMOVAL)
+    await expect(injected.install('superpowers', true)).resolves.toEqual(INSTALLED)
     expect(b.marketplace.setEnabled).toHaveBeenCalledWith({ plugin: 'superpowers', enabled: false })
     expect(b.marketplace.uninstall).toHaveBeenCalledWith({ plugin: 'superpowers' })
+    expect(b.marketplace.install).toHaveBeenCalledWith({ plugin: 'superpowers', allowUnpinned: true })
 
     // A refusal is thrown, not returned: the panel's failure state depends on it.
     b.marketplace.catalog.mockResolvedValueOnce(REFUSED)
     await expect(injected.catalog()).rejects.toThrow('marketplace/read-only: refused')
     b.marketplace.status.mockResolvedValueOnce(REFUSED)
     await expect(injected.status()).rejects.toThrow('marketplace/read-only: refused')
+    b.marketplace.install.mockResolvedValueOnce(REFUSED)
+    await expect(injected.install('superpowers', false)).rejects.toThrow('marketplace/read-only: refused')
 
     await b.ctx.fiber.dispose()
   })

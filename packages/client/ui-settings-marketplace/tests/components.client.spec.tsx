@@ -91,6 +91,7 @@ function props(
     setEnabled: vi.fn(async () => ({ status: view }) as never),
     uninstall: vi.fn(async () => ({ status: view }) as never),
     catalog: vi.fn(async () => ({ rows: [], failed: [] })),
+    install: vi.fn(async () => ({ plugin: 'commit-helper', warnings: [], status: view }) as never),
     ...overrides,
   } as unknown as MarketplaceSettingsTabProps
 }
@@ -351,5 +352,118 @@ describe('catalog filter', () => {
     expect(matchesQuery(searchable, '  aikido  ')).toBe(false)
     // Whitespace alone is no filter at all, exactly as the empty query is.
     expect(matchesQuery(searchable, '   ')).toBe(true)
+  })
+})
+
+describe('installing from the catalog', () => {
+  const rows = [
+    { plugin: 'commit-helper', marketplace: 'official', description: 'commit flow', tags: [], installable: true, installed: false, warnings: [] },
+    { plugin: 'loose', marketplace: 'official', description: 'loose flow', tags: [], installable: false, installed: false, warnings: ['source "x" has no sha pin'] },
+  ]
+
+  it('installs a pinned entry in one call', async () => {
+    const installed = status({
+      installed: [{
+        plugin: 'commit-helper',
+        marketplace: 'official',
+        sha: 'a'.repeat(40),
+        installPath: 'C:\\plugins\\commit-helper',
+        capabilities: [],
+        rowIds: [],
+        skillIds: [],
+        state: 'no-rows',
+        skills: 'none',
+      }],
+    })
+    const install = vi.fn(async () => ({ plugin: 'commit-helper', sha: 'a'.repeat(40), warnings: [], status: installed }))
+    render(<MarketplaceSettingsTab {...props({ catalog: vi.fn(async () => ({ rows, failed: [] })), install })} />)
+    await screen.findByText('superpowers')
+    fireEvent.click(screen.getByRole('button', { name: 'Browse available plugins' }))
+    await screen.findByText('commit-helper')
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Install' })[0]!)
+    await vi.waitFor(() => { expect(install).toHaveBeenCalledWith('commit-helper', false) })
+    // No acknowledgement was asked for: a pinned entry installs in one call.
+    expect(screen.queryByRole('dialog')).toBeNull()
+    // The installed section renders the status the Host returned, not the one
+    // the panel started from — 'superpowers' is gone with it.
+    expect(await screen.findByText('C:\\plugins\\commit-helper')).toBeTruthy()
+    expect(screen.queryByText('superpowers')).toBeNull()
+    // A clean run leaves no failure line behind.
+    expect(screen.queryByText(/Install failed/u)).toBeNull()
+  })
+
+  it('will not install an unpinned entry until it is acknowledged', async () => {
+    const install = vi.fn(async () => ({ plugin: 'loose', sha: 'b'.repeat(40), warnings: [], status: status() }))
+    render(<MarketplaceSettingsTab {...props({ catalog: vi.fn(async () => ({ rows, failed: [] })), install })} />)
+    await screen.findByText('superpowers')
+    fireEvent.click(screen.getByRole('button', { name: 'Browse available plugins' }))
+    await screen.findByText('loose')
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Install' })[1]!)
+    const confirm = await screen.findByRole('button', { name: 'Install anyway' })
+    // Unavailable until the box is set: the permission IS the checkbox.
+    expect((confirm as HTMLButtonElement).disabled).toBe(true)
+    // A click while it is unavailable installs nothing at all.
+    fireEvent.click(confirm)
+    expect(install).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'I understand this entry is unpinned' }))
+    expect((confirm as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(confirm)
+    await vi.waitFor(() => { expect(install).toHaveBeenCalledWith('loose', true) })
+  })
+
+  it('shows a refusal against its own row', async () => {
+    const install = vi.fn(async () => { throw new Error('marketplace/unpinned: refused') })
+    render(<MarketplaceSettingsTab {...props({ catalog: vi.fn(async () => ({ rows, failed: [] })), install })} />)
+    await screen.findByText('superpowers')
+    fireEvent.click(screen.getByRole('button', { name: 'Browse available plugins' }))
+    await screen.findByText('commit-helper')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Install' })[0]!)
+    const failure = await screen.findByText('Install failed: marketplace/unpinned: refused')
+    // The refusal lands on the row that caused it, and on no other.
+    expect(failure.closest('li')?.textContent).toContain('commit-helper')
+    expect(screen.getAllByText(/Install failed/u)).toHaveLength(1)
+  })
+
+  it('installs nothing when the acknowledgement is cancelled', async () => {
+    const install = vi.fn(async () => ({ plugin: 'loose', sha: 'b'.repeat(40), warnings: [], status: status() }))
+    render(<MarketplaceSettingsTab {...props({ catalog: vi.fn(async () => ({ rows, failed: [] })), install })} />)
+    await screen.findByText('superpowers')
+    fireEvent.click(screen.getByRole('button', { name: 'Browse available plugins' }))
+    await screen.findByText('loose')
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Install' })[1]!)
+    const dialog = within(await screen.findByRole('dialog', { name: /loose/u }))
+    // The header close control and the footer cancel share one label and one
+    // handler, so either withdraws the request.
+    fireEvent.click(dialog.getAllByRole('button', { name: 'Cancel' })[0]!)
+
+    // Cancelling withdraws the request: the entry stays uninstalled and unpinned.
+    expect(screen.queryByRole('dialog', { name: /loose/u })).toBeNull()
+    expect(install).not.toHaveBeenCalled()
+    expect(screen.getByText('no pin')).toBeTruthy()
+  })
+
+  it('reports a refusal that arrives as a bare value', async () => {
+    const install = vi.fn(async () => { throw 'marketplace/unpinned: refused' })
+    render(<MarketplaceSettingsTab {...props({ catalog: vi.fn(async () => ({ rows, failed: [] })), install })} />)
+    await screen.findByText('superpowers')
+    fireEvent.click(screen.getByRole('button', { name: 'Browse available plugins' }))
+    await screen.findByText('commit-helper')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Install' })[0]!)
+    expect(await screen.findByText('Install failed: marketplace/unpinned: refused')).toBeTruthy()
+  })
+
+  it('draws no install control when the deployment refuses writes', async () => {
+    render(<MarketplaceSettingsTab {...props({ catalog: vi.fn(async () => ({ rows, failed: [] })) }, status({ allowMutations: false }))} />)
+    await screen.findByText(/read-only/u)
+    fireEvent.click(screen.getByRole('button', { name: 'Browse available plugins' }))
+    await screen.findByText('commit-helper')
+
+    // The Host would refuse every install; offering the button would be a
+    // control whose only outcome is a refusal.
+    expect(screen.queryByRole('button', { name: 'Install' })).toBeNull()
   })
 })

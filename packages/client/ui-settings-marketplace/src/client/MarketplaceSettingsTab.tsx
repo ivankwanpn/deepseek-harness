@@ -23,6 +23,7 @@ import type {
   MarketplaceCatalogView,
   MarketplaceStatusView,
   PluginEnablementView,
+  PluginInstallResultView,
   PluginRemovalView,
 } from '@deepseek-ai/dsh-api-remotes/client'
 import { Button, RiskConfirmation, Switch, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -42,6 +43,13 @@ export interface MarketplaceSettingsTabInjected {
   uninstall: (plugin: string) => Promise<PluginRemovalView>
   /** Read the catalog of installable plugins from the registered marketplaces. */
   catalog: () => Promise<MarketplaceCatalogView>
+  /**
+   * Install one catalog plugin, returning the status that write produced.
+   *
+   * `allowUnpinned` records a source that declares no commit; the panel sets it
+   * only after the user acknowledges that entry's missing pin.
+   */
+  install: (plugin: string, allowUnpinned: boolean) => Promise<PluginInstallResultView>
 }
 
 /** Full component props assembled by the Settings slot renderer. */
@@ -192,6 +200,7 @@ export function MarketplaceSettingsTab({
   setEnabled,
   uninstall,
   catalog,
+  install,
   t,
 }: MarketplaceSettingsTabProps): ReactNode {
   const [state, setState] = useState<ViewState>({ status: 'loading' })
@@ -201,6 +210,10 @@ export function MarketplaceSettingsTab({
   const [failures, setFailures] = useState<Readonly<Record<string, string>>>({})
   const [catalogState, setCatalogState] = useState<CatalogState>({ status: 'unloaded' })
   const [query, setQuery] = useState('')
+  const [confirmingInstall, setConfirmingInstall] = useState<string | undefined>(undefined)
+  const [installAcknowledged, setInstallAcknowledged] = useState(false)
+  const [installing, setInstalling] = useState<string | undefined>(undefined)
+  const [installFailures, setInstallFailures] = useState<Readonly<Record<string, string>>>({})
 
   const load = useCallback(async (): Promise<void> => {
     setState({ status: 'loading' })
@@ -235,6 +248,27 @@ export function MarketplaceSettingsTab({
       setCatalogState(current => ({ status: 'failed', view: current.view }))
     }
   }, [catalog])
+
+  /**
+   * Run one install, then render the status it returned.
+   *
+   * The catalog is re-read afterwards so the section shows the Host's own view
+   * of what a marketplace now offers, rather than an entry the panel guessed
+   * was installed.
+   */
+  const runInstall = useCallback(async (plugin: string, allowUnpinned: boolean): Promise<void> => {
+    setInstalling(plugin)
+    setInstallFailures(current => ({ ...current, [plugin]: '' }))
+    try {
+      const result = await install(plugin, allowUnpinned)
+      setState({ status: 'ready', view: result.status })
+      await loadCatalog()
+    } catch (error) {
+      setInstallFailures(current => ({ ...current, [plugin]: error instanceof Error ? error.message : String(error) }))
+    } finally {
+      setInstalling(undefined)
+    }
+  }, [install, loadCatalog])
 
   /** Run one write, then render the status it returned. */
   const write = useCallback(async (
@@ -324,6 +358,16 @@ export function MarketplaceSettingsTab({
         onLoad={() => { void loadCatalog() }}
         onRefresh={() => { void loadCatalog() }}
         onQuery={setQuery}
+        editable={allowMutations}
+        onInstall={(row) => {
+          // An unpinned entry is installed only through an explicit
+          // acknowledgement; a pinned one goes straight through.
+          if (row.installable) { void runInstall(row.plugin, false); return }
+          setInstallAcknowledged(false)
+          setConfirmingInstall(row.plugin)
+        }}
+        busy={installing}
+        failedFor={installFailures}
       />
 
       <RiskConfirmation
@@ -349,6 +393,34 @@ export function MarketplaceSettingsTab({
           void write(plugin, async () => (await uninstall(plugin)).status)
         }}
       />
+
+      {confirmingInstall === undefined
+        ? null
+        : (
+          <RiskConfirmation
+            open
+            title={`${t('catalogInstallUnpinnedTitle')} · ${confirmingInstall}`}
+            description={t('catalogInstallUnpinnedDescription')}
+            acknowledgeLabel={t('catalogInstallUnpinnedAcknowledge')}
+            cancelLabel={t('catalogInstallUnpinnedCancel')}
+            closeLabel={t('catalogInstallUnpinnedCancel')}
+            confirmLabel={t('catalogInstallUnpinnedConfirm')}
+            acknowledged={installAcknowledged}
+            disabled={installing !== undefined}
+            onAcknowledgedChange={setInstallAcknowledged}
+            onCancel={() => {
+              setInstallAcknowledged(false)
+              setConfirmingInstall(undefined)
+            }}
+            onConfirm={() => {
+              setInstallAcknowledged(false)
+              setConfirmingInstall(undefined)
+              // The permission is the acknowledgement: only the checked box
+              // reaches this handler, and only an unpinned entry opens it.
+              void runInstall(confirmingInstall, true)
+            }}
+          />
+        )}
     </div>
   )
 }
