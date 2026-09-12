@@ -11,7 +11,7 @@
  * its `source` fields later become git URLs and filesystem paths. So parsing is
  * strict (see parse.ts) and nothing here writes to disk or executes anything.
  */
-import { MarketplaceParseError, parseMarketplace, type Marketplace, type PluginSource } from './parse.ts'
+import { MarketplaceParseError, parseMarketplace, type Marketplace, type MarketplaceEntry, type PluginSource } from './parse.ts'
 
 /** Hard cap so a hostile or broken endpoint cannot exhaust memory. */
 export const MAX_MANIFEST_BYTES = 8 * 1024 * 1024
@@ -208,6 +208,26 @@ export function resolveLocalSource(
   const subdirectory = raw.replace(/^\.\//, '').replace(/^\//, '')
   if (subdirectory === '' || subdirectory.startsWith('../')) return undefined
   return { kind: 'git', url: repoUrl, subdirectory, ...(ref !== undefined ? { ref } : {}) }
+}
+
+/**
+ * The source an install reads for one entry.
+ *
+ * A marketplace-relative `local` source names content inside the marketplace
+ * repository, so install re-expresses it as a git subdir of that repository and
+ * invents no `sha`. The catalog and the installer both read the source through
+ * here, because deciding installability from the entry's own `local` form makes
+ * the pin rule accept a source the installer then refuses.
+ *
+ * @param entry - the parsed entry whose source is being resolved.
+ * @param marketplaceUrl - the registration's manifest url, the base for a relative path.
+ * @returns the source an install would read; the entry's own source when the
+ * path is not relative or the manifest url names no repository root.
+ */
+export function installSource(entry: MarketplaceEntry, marketplaceUrl: string): PluginSource {
+  if (entry.source.kind !== 'local') return entry.source
+  return resolveLocalSource(entry.source.path, marketplaceRepoRoot(marketplaceUrl), entry.source.ref)
+    ?? entry.source
 }
 
 /**

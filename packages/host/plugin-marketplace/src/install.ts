@@ -16,7 +16,7 @@
  */
 import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { fetchMarketplace, marketplaceRepoRoot, resolveLocalSource, type FetchOptions } from './fetch.ts'
+import { fetchMarketplace, installSource, marketplaceRepoRoot, type FetchOptions } from './fetch.ts'
 import { detectCapabilities, fetchPlugin, resolveRefSha } from './git.ts'
 import { removePluginSkills, skillEntryNames } from './materialize.ts'
 import type { MarketplaceEntry } from './parse.ts'
@@ -194,14 +194,10 @@ export async function installPlugin(plugin: string, options: InstallOptions): Pr
   )
   if (renamedFrom !== undefined) warnings.push(`${renamedFrom} was renamed to ${plugin}`)
 
-  // A marketplace-relative `local` source names content INSIDE the marketplace
-  // repository, so it is resolved against that repository's root rather than
-  // the process working directory. Left unresolved it would be read as a
-  // cwd-relative path that almost never exists.
+  // Recorded with the install so its subdirectory and sha resolve back to these
+  // bytes; the source install reads is resolved separately, through the same rule.
   const repoUrl = marketplaceRepoRoot(marketplaceUrl)
-  const source = entry.source.kind === 'local'
-    ? (resolveLocalSource(entry.source.path, repoUrl, entry.source.ref) ?? entry.source)
-    : entry.source
+  const source = installSource(entry, marketplaceUrl)
 
   // An unpinned git source is refused by default, because a ref resolves at
   // fetch time and the same manifest could deliver different code tomorrow.
