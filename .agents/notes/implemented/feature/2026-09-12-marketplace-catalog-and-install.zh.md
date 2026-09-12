@@ -22,7 +22,7 @@ Status: implemented
 
 `src/catalog.ts` 拥有一个操作：
 
-```ts
+```text
 catalog(state: MarketplaceState, options?: { fetch?: FetchOptions }): Promise<CatalogResult>
 ```
 

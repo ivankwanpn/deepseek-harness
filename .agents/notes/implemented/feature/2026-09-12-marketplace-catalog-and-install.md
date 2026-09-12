@@ -22,7 +22,7 @@ An install stays a single request and a single response. `installPlugin` is one 
 
 `src/catalog.ts` owns one operation:
 
-```ts
+```text
 catalog(state: MarketplaceState, options?: { fetch?: FetchOptions }): Promise<CatalogResult>
 ```
 

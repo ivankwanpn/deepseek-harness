@@ -30,6 +30,8 @@ Call this package when a user asks DSH to install something from a plugin market
 ```ts
 import { defaultStatePath, installPlugin, loadState } from '@deepseek-ai/dsh-host-plugin-marketplace'
 
+const harnessHome = '/home/user/.dsh'
+const patchLayerPath = `${harnessHome}/cordis.patch.yml`
 const statePath = defaultStatePath(harnessHome)
 const result = await installPlugin('aikido', {
   state: loadState(statePath),
