@@ -75,7 +75,7 @@ function compile(source: string, artifact?: string) {
   expect(diagnostics.length, formatted).toBe(0)
 }
 
-describe('RemoteMock proxy types', { timeout: 60_000 }, () => {
+describe('RemoteMock proxy types', () => {
   it('keeps production closed while an empty generated map permits Mock calls and overrides', () => {
     compile(`
 import type { TypertRemoteNamespace, TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'

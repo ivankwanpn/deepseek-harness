@@ -1155,7 +1155,7 @@ describe('tool result call identity', () => {
 })
 
 describe('disposal and cancellation during pre-step assembly', () => {
-  it('disposal during system-prompt assembly closes a no-step turn', { timeout: 30000 }, async () => {
+  it('disposal during system-prompt assembly closes a no-step turn', async () => {
     // Start disposal, then release assembly. Do not await disposal first: it
     // waits for the blocked driver to exit.
     const adapter = new MockAdapter(['hang'])
@@ -1208,7 +1208,7 @@ describe('disposal and cancellation during pre-step assembly', () => {
     expect(reasons).toEqual([{ kind: 'aborted', reason: { kind: 'disposed' } }])
   })
 
-  it('cancel during system-prompt assembly closes a no-step turn', { timeout: 30000 }, async () => {
+  it('cancel during system-prompt assembly closes a no-step turn', async () => {
     const adapter = new MockAdapter([textResponse('should not appear')])
     let releaseAssemble!: () => void
     const blocker = new Promise<void>(r => void (releaseAssemble = r))
@@ -1258,7 +1258,7 @@ describe('disposal and cancellation during pre-step assembly', () => {
     expect(reasons).toEqual([{ kind: 'aborted', reason: { kind: 'user' } }])
   })
 
-  it('disposal during pre-step closes a no-step turn', { timeout: 15000 }, async () => {
+  it('disposal during pre-step closes a no-step turn', async () => {
     // Start disposal, then release pre-step; awaiting disposal first would deadlock on the blocked driver.
     const adapter = new MockAdapter(['hang'])
     let releasePreStep!: () => void
@@ -1305,7 +1305,7 @@ describe('disposal and cancellation during pre-step assembly', () => {
     expect(reasons).toEqual([{ kind: 'aborted', reason: { kind: 'disposed' } }])
   })
 
-  it('cancel during pre-step closes a no-step turn', { timeout: 15000 }, async () => {
+  it('cancel during pre-step closes a no-step turn', async () => {
     // Release pre-step after cancellation to exercise the post-listener check.
     const adapter = new MockAdapter(['hang'])
     let releasePreStep!: () => void
@@ -1352,7 +1352,7 @@ describe('disposal and cancellation during pre-step assembly', () => {
     expect(reasons).toEqual([{ kind: 'aborted', reason: { kind: 'user' } }])
   })
 
-  it('disposal during assembly does not leak an LLM call or append an Assistant settlement', { timeout: 15000 }, async () => {
+  it('disposal during assembly does not leak an LLM call or append an Assistant settlement', async () => {
     // The key assertion from the original bug report: after disposal, no
     // assistant/attempt or assistant/message appears — the turn ends disposed
     // before any model interaction.

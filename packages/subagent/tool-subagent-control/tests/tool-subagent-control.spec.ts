@@ -100,7 +100,7 @@ function callTool(
 async function waitNoActivation(ctx: Context, childId: SessionId): Promise<void> {
   await vi.waitFor(() => {
     expect(ctx.agents.get(childId)).toBeUndefined()
-  }, { timeout: 5_000 })
+  })
 }
 
 describe('dsh-tool-subagent-control', () => {

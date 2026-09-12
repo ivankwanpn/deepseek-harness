@@ -116,7 +116,7 @@ describe('llm-pi-ai real dormant composition', () => {
     ].join('\n'))
     await vi.waitFor(() => {
       expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual(['deepseek'])
-    }, { timeout: 5000 })
+    })
 
     const result = await assemble(ctx, { provider: 'deepseek', model: 'deepseek-v4-flash', messages: [] })
     expect(result.message.content).toEqual([{ type: 'text', text: 'hello' }])
@@ -145,7 +145,7 @@ describe('llm-pi-ai real dormant composition', () => {
     ].join('\n'))
     await vi.waitFor(() => {
       expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual(['acme-gateway'])
-    }, { timeout: 5000 })
+    })
 
     await expect(ctx.llm.discoverModels('llm-pi-ai', {
       provider: 'acme-gateway',
@@ -176,7 +176,7 @@ describe('llm-pi-ai real dormant composition', () => {
     ].join('\n'))
     await vi.waitFor(() => {
       expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual(['deepseek'])
-    }, { timeout: 5000 })
+    })
 
     const truncated = await assemble(ctx, {
       provider: 'deepseek',
@@ -236,7 +236,7 @@ describe('llm-pi-ai real dormant composition', () => {
     ].join('\n'))
     await vi.waitFor(() => {
       expect(ctx.llm.listProviders().map(provider => provider.id)).toEqual(['deepseek'])
-    }, { timeout: 5000 })
+    })
 
     // A pre-envelope session log entry: max-token assembly dropped the tool
     // call from content while the flat v1 state still describes both blocks.

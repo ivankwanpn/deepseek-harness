@@ -6,6 +6,15 @@ import { join, relative, sep } from 'node:path'
 import { coverageExemptHeavySuites } from './coverage-exempt.ts'
 import { pnpmInvocation } from './pnpm-invocation.ts'
 
+/**
+ * Vitest's own words when a forked worker dies before it can report the file it
+ * was running. The partition's own exit status stays zero, so nothing else in
+ * the coordinator answers for the lost file: the merged report simply misses
+ * whatever that file covered, and the per-file threshold then fails on an
+ * unrelated source file.
+ */
+const WORKER_DEATH_MARKERS = ['Worker forks emitted error', 'Worker exited unexpectedly'] as const
+
 /** Environment variable selecting the number of instrumented coverage processes. */
 export const COVERAGE_PARTITIONS_ENV = 'DSH_COVERAGE_PARTITIONS'
 
@@ -77,22 +86,64 @@ export function parseCoveragePartitionCount(raw: string | undefined): number | u
 }
 
 /**
- * Resolve the paired Vitest timeout arguments used by coverage partitions.
+ * Resolve the configured millisecond budget shared by every unit-lane timeout.
+ * Both the Vitest CLI arguments and `vitest.config.ts` read the budget through
+ * this function, so a lane that declares `DSH_COVERAGE_TEST_TIMEOUT_MS` and the
+ * config that the lane loads can never disagree about the number.
+ * @param raw - the configured millisecond budget, or undefined to keep Vitest's defaults.
+ * @returns the budget in milliseconds, or undefined when unset or empty.
+ * @throws When `raw` is set but is not a positive base-10 integer.
+ */
+export function coverageTestTimeoutMs(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw === '') return undefined
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || String(parsed) !== raw) {
+    throw new Error(`${COVERAGE_TEST_TIMEOUT_ENV} must be a positive integer, got ${JSON.stringify(raw)}.`)
+  }
+  return parsed
+}
+
+/**
+ * The per-test budget both coverage lanes export, and the fallback for a run
+ * that declares none of its own.
+ */
+export const LANE_TEST_BUDGET_FALLBACK_MS = 90_000
+
+/**
+ * Resolve the unit lane's per-test budget in milliseconds.
+ *
+ * The Vitest projects, the lane's `vi.waitFor` default, and the coverage gates'
+ * CLI arguments all resolve the budget here, so one run cannot grant one number
+ * to a case and a different one to the waits inside it. A lane that exports
+ * `DSH_COVERAGE_TEST_TIMEOUT_MS` still governs every one of them.
+ * @param env - the environment carrying the optional override.
+ * @returns the per-test budget in milliseconds.
+ * @throws When the override is set but is not a positive base-10 integer.
+ */
+export function laneTestBudgetMs(env: NodeJS.ProcessEnv = process.env): number {
+  return coverageTestTimeoutMs(env[COVERAGE_TEST_TIMEOUT_ENV]) ?? LANE_TEST_BUDGET_FALLBACK_MS
+}
+
+/**
+ * Resolve the Vitest timeout arguments used by coverage partitions.
  * `--hookTimeout` travels with the test budget because setup and teardown pay
  * the same host contention the raised test budget accounts for: fixtures that
  * await child exit or retry Windows handle release spend that cost in
  * `afterEach`, where Vitest's separate 10 s default would otherwise fail a
  * suite whose cases all passed.
+ *
+ * `--expect.poll.timeout` deliberately does not travel with them. Vitest 4
+ * parses the flag but resolves poll budgets from the loaded config, so the
+ * argument granted nothing while reading as though it did; `vitest.config.ts`
+ * declares `expect.poll.timeout` from the same budget, and the lane's setup file
+ * does the same for `vi.waitFor`, which reads no configuration at all.
  * @param raw - the configured millisecond budget, or undefined to keep Vitest's defaults.
  * @returns the Vitest arguments applying that budget, empty when unset.
  */
 export function coverageTestTimeoutArgs(raw: string | undefined): string[] {
-  if (raw === undefined || raw === '') return []
-  const parsed = Number.parseInt(raw, 10)
-  if (!Number.isSafeInteger(parsed) || parsed < 1 || String(parsed) !== raw) {
-    throw new Error(`${COVERAGE_TEST_TIMEOUT_ENV} must be a positive integer, got ${JSON.stringify(raw)}.`)
-  }
-  return [`--testTimeout=${raw}`, `--expect.poll.timeout=${raw}`, `--hookTimeout=${raw}`]
+  const budget = coverageTestTimeoutMs(raw)
+  if (budget === undefined) return []
+  return [`--testTimeout=${budget}`, `--hookTimeout=${budget}`]
 }
 
 /** Remove pnpm's package-script separator before forwarding Vitest arguments. */
@@ -468,6 +519,7 @@ export class CoveragePartitionCoordinator {
       // run, but the completed partitions' timings are still worth keeping.
       this.persistDurations(this.partitions)
       await this.assertCompleteBlobSet(commands)
+      this.assertNoDiedWorkers(commands, results)
 
       const mergeCommand = this.mergeCommand()
       console.log(`coverage-partitions: start ${mergeCommand.label}`)
@@ -491,6 +543,23 @@ export class CoveragePartitionCoordinator {
         + 'the instrumented inventory is empty or smaller than the partition count.',
       )
     }
+  }
+
+  /**
+   * Refuse a partition whose fork died. Vitest prints which pool failed and
+   * drops the in-flight file's result, so the partition still exits zero while
+   * the merged report misses whatever that file covered; the per-file threshold
+   * then fails on a source file whose suite never ran.
+   * @param commands - the partition commands, in run order.
+   * @param results - their results, in the same order.
+   */
+  private assertNoDiedWorkers(commands: readonly CoverageCommand[], results: readonly CoverageCommandResult[]): void {
+    const died = commands.filter((_, index) =>
+      WORKER_DEATH_MARKERS.some(marker => (results[index]?.outputTail ?? '').includes(marker)))
+    if (died.length === 0) return
+    throw new Error(
+      `coverage partitions: ${died.length} partition process(es) lost a forked worker, so the merged report is missing every file that worker had left to run: ${died.map(command => command.label).join(', ')}.`,
+    )
   }
 
   /** Persist measured per-file durations so the next run can weight by them. */

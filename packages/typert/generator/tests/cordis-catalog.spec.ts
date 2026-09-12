@@ -57,6 +57,8 @@ describe('Typert-backed Cordis catalog', () => {
     expect(inherited).toContain('([`vendor/cordis/src/context.ts:12`](../../vendor/cordis/src/context.ts))')
   })
 
+  // Eight minutes, above the lane's budget, because the case loads and projects
+  // every package's type graph rather than waiting on a shared host resource.
   it('reproduces every committed catalog artifact byte for byte', { timeout: 480_000 }, () => {
     const { projector, model } = projection()
     const expected = (path: string): string => readFileSync(join(workspaceRoot, path), 'utf8')
@@ -85,6 +87,8 @@ describe('Typert-backed Cordis catalog', () => {
     )
   })
 
+  // Above the lane's budget for the same reason as the byte-for-byte case above:
+  // the projection walks every package's type graph.
   it('resolves each key to the declaration a caller meets, and drops keys no plugin provides', { timeout: 480_000 }, () => {
     const byKey = new Map(projection().model.services.map(service => [service.key, service]))
     // An interface-typed key is described by its Service Definition: that is where

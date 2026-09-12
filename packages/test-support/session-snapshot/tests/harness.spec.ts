@@ -130,7 +130,7 @@ describe('runScenario', () => {
     expect(clientClosed).toBe(true)
   })
 
-  it('centralizes ACP boot, captures, updates, fail-closed permissions, and shutdown', { timeout: 20_000 }, async () => {
+  it('centralizes ACP boot, captures, updates, fail-closed permissions, and shutdown', async () => {
     const { dir, fixtureFile } = await scenario({ permissionProbe: true, echoEnv: true, stderrNote: 'launcher stderr' })
     const sessionsRoot = await mkdtemp(join(tmpdir(), 'acp-launcher-sessions-'))
     tempDirs.push(sessionsRoot)
@@ -281,7 +281,7 @@ describe('runScenario', () => {
     })).toThrow(`snapshot profile patch must be a top-level array: ${invalidPatch}`)
   })
 
-  it('waits for inherited stdio and buffered ACP parsing after the parent exits', { timeout: 20_000 }, async () => {
+  it('waits for inherited stdio and buffered ACP parsing after the parent exits', async () => {
     const { dir, fixtureFile } = await scenario({ lateInheritedOutput: true })
     const launched = launchAcpTestAgent({
       agent: AGENT,
@@ -455,7 +455,7 @@ describe('runScenario', () => {
     }
   })
 
-  it('waits for in-flight client callbacks after the ACP stream closes', { timeout: 20_000 }, async () => {
+  it('waits for in-flight client callbacks after the ACP stream closes', async () => {
     const { dir, fixtureFile } = await scenario({ permissionProbe: true })
     let releasePermission: (() => void) | undefined
     const permissionReleased = new Promise<void>((resolve) => { releasePermission = resolve })
@@ -490,7 +490,7 @@ describe('runScenario', () => {
     expect(permissionFinished).toBe(true)
   })
 
-  it('includes agent stderr when the ACP connection closes during startup', { timeout: 20_000 }, async () => {
+  it('includes agent stderr when the ACP connection closes during startup', async () => {
     const { fixtureFile } = await scenario({ failOnBoot: true, stderrNote: 'fake agent requested startup failure' })
     await expect(runScenario(
       { steps: [{ op: 'initialize' }] },
@@ -515,7 +515,7 @@ describe('runScenario', () => {
     }
   })
 
-  it('drives a full turn: initialize, session, prompt, permission stub, harvest', { timeout: 20_000 }, async () => {
+  it('drives a full turn: initialize, session, prompt, permission stub, harvest', async () => {
     const { fixtureFile } = await scenario({
       permissionProbe: true,
       logs: [{
@@ -546,7 +546,7 @@ describe('runScenario', () => {
     expect((JSON.parse(sessionLine) as { cwd?: string }).cwd).toBe(result.cwd)
   })
 
-  it('drives a structured prompt-content step without flattening its wire blocks', { timeout: 20_000 }, async () => {
+  it('drives a structured prompt-content step without flattening its wire blocks', async () => {
     const { fixtureFile } = await scenario({})
     const result = await runScenario(
       {
@@ -564,7 +564,7 @@ describe('runScenario', () => {
     expect(result.rawStdout).toContain('"stopReason":"end_turn"')
   })
 
-  it('forwards override/child fixture paths into the child env and captures stderr', { timeout: 20_000 }, async () => {
+  it('forwards override/child fixture paths into the child env and captures stderr', async () => {
     const { dir, fixtureFile } = await scenario({ echoEnv: true, stderrNote: 'fake bin booted' })
     const childFiles = [join(dir, 'session.1.jsonl'), join(dir, 'session.2.jsonl')]
     const result = await runScenario(
@@ -614,7 +614,7 @@ describe('runScenario', () => {
     }
   })
 
-  it('gives concurrent runs of the same scenario private temporary spill roots', { timeout: 20_000 }, async () => {
+  it('gives concurrent runs of the same scenario private temporary spill roots', async () => {
     const fixture = await scenario({ echoEnv: true })
     const results = await Promise.all([fixture, fixture].map(({ fixtureFile }) => runScenario(
       { steps: [...boot, { op: 'prompt', text: 'env?' }] },
@@ -631,7 +631,7 @@ describe('runScenario', () => {
     }
   })
 
-  it('seeds the workspace dir into the temp cwd before the run', { timeout: 20_000 }, async () => {
+  it('seeds the workspace dir into the temp cwd before the run', async () => {
     const { dir, fixtureFile } = await scenario({ echoWorkspace: true })
     const workspaceDir = join(dir, 'workspace')
     await writeFile(join(dir, 'behavior.json'), JSON.stringify({ echoWorkspace: true }))
@@ -645,7 +645,7 @@ describe('runScenario', () => {
     expect(result.rawStdout).toContain('workspace:seeded.txt')
   })
 
-  it('prepares the generated workspace after copying committed fixtures', { timeout: 20_000 }, async () => {
+  it('prepares the generated workspace after copying committed fixtures', async () => {
     const { dir, fixtureFile } = await scenario({ echoWorkspace: true })
     const workspaceDir = join(dir, 'workspace')
     const { mkdir } = await import('node:fs/promises')
@@ -669,7 +669,7 @@ describe('runScenario', () => {
     expect(result.rawStdout).toContain('workspace:committed.txt,runtime.txt')
   })
 
-  it('creates the generated workspace under an explicit parent', { timeout: 20_000 }, async () => {
+  it('creates the generated workspace under an explicit parent', async () => {
     const { fixtureFile } = await scenario({})
     const workspaceParent = await mkdtemp(join(tmpdir(), 'acp-snap-parent-'))
     tempDirs.push(workspaceParent)
@@ -685,7 +685,7 @@ describe('runScenario', () => {
     expect(child.startsWith(`..${sep}`)).toBe(false)
   })
 
-  it('promptAndCancel waits for the durable turn start, cancels, and settles the prompt', { timeout: 20_000 }, async () => {
+  it('promptAndCancel waits for the durable turn start, cancels, and settles the prompt', async () => {
     const { fixtureFile } = await scenario({ prompt: 'hang-until-cancel' })
     const result = await runScenario(
       { steps: [...boot, { op: 'promptAndCancel', text: 'hang' }] },
@@ -696,7 +696,7 @@ describe('runScenario', () => {
     expect(result.rawStdout.indexOf('thinking about it')).toBeLessThan(result.rawStdout.indexOf('cancelled'))
   })
 
-  it('promptAndCancel can wait for cwd-relative readiness before cancelling', { timeout: 20_000 }, async () => {
+  it('promptAndCancel can wait for cwd-relative readiness before cancelling', async () => {
     const { dir, fixtureFile } = await scenario({ prompt: 'hang-until-cancel' })
     const workspaceDir = join(dir, 'workspace')
     const { mkdir } = await import('node:fs/promises')
@@ -727,7 +727,7 @@ describe('runScenario', () => {
     )).rejects.toThrow(/workspace file "never\.txt" did not appear within 20ms/)
   })
 
-  it('promptAndWaitForAgentMessage keeps the app live through a matching later update', { timeout: 20_000 }, async () => {
+  it('promptAndWaitForAgentMessage keeps the app live through a matching later update', async () => {
     const { fixtureFile } = await scenario({ prompt: 'respond' })
     const result = await runScenario(
       {
@@ -742,7 +742,7 @@ describe('runScenario', () => {
     expect(result.rawStdout).toContain('thinking about it')
   })
 
-  it('waitForTurnEnd holds cancellation open through the persisted closing boundary', { timeout: 20_000 }, async () => {
+  it('waitForTurnEnd holds cancellation open through the persisted closing boundary', async () => {
     const { fixtureFile } = await scenario({
       prompt: 'hang-until-cancel',
       persistLogsOnCancel: true,
@@ -761,7 +761,7 @@ describe('runScenario', () => {
     expect(result.sessionLogs[0]?.content).toContain('"type":"turn/end"')
   })
 
-  it('waitForInboxMessage holds the app through a matching durable insertion', { timeout: 20_000 }, async () => {
+  it('waitForInboxMessage holds the app through a matching durable insertion', async () => {
     const { fixtureFile } = await scenario({
       prompt: 'hang-until-cancel',
       persistLogsOnCancel: true,
@@ -789,7 +789,10 @@ describe('runScenario', () => {
     expect(result.sessionLogs[0]?.content).toContain('durable marker')
   })
 
-  it('waitForInboxMessage times out when the session log or matching insertion is absent', { timeout: 20_000 }, async () => {
+  it('waitForInboxMessage times out when the session log or matching insertion is absent', async ({ onTestFinished }) => {
+    // Both steps ask for the 20 ms diagnostic, so the harvest must not race it:
+    // the same de-racing the two tight-budget cases below use.
+    isolateDiagnosticTimeout(onTestFinished)
     const absent = await scenario({ prompt: 'hang-until-cancel', persistLogsOnCancel: true })
     await expect(runScenario(
       { steps: [...boot, { op: 'promptAndCancel', text: 'hang' }, { op: 'waitForInboxMessage', text: 'missing', timeoutMs: 20 }] },
@@ -810,7 +813,7 @@ describe('runScenario', () => {
     )).rejects.toThrow(/did not persist expected inbox message within 20ms/)
   })
 
-  it('waitForTitleAfterTurnEnd holds the app through a standalone durable title', { timeout: 20_000 }, async () => {
+  it('waitForTitleAfterTurnEnd holds the app through a standalone durable title', async () => {
     const { fixtureFile } = await scenario({
       prompt: 'hang-until-cancel',
       persistLogsOnCancel: true,
@@ -836,7 +839,7 @@ describe('runScenario', () => {
     expect(result.sessionLogs[0]?.content).toMatch(/"turn\/end"[\s\S]*"session\/title"/)
   })
 
-  it('waitForTurnStart can require a later durable turn before continuing', { timeout: 20_000 }, async () => {
+  it('waitForTurnStart can require a later durable turn before continuing', async () => {
     const { fixtureFile } = await scenario({
       prompt: 'hang-until-cancel',
       persistLogsOnCancel: true,
@@ -861,7 +864,7 @@ describe('runScenario', () => {
     expect(result.sessionLogs[0]?.content).toContain('"turn":3')
   })
 
-  it('waitForTurnStart rejects missing, earlier, and malformed durable turns', { timeout: 20_000 }, async () => {
+  it('waitForTurnStart rejects missing, earlier, and malformed durable turns', async () => {
     const missing = await scenario({})
     await expect(runScenario(
       { steps: [...boot, { op: 'waitForTurnStart', timeoutMs: 200 }] },
@@ -938,7 +941,7 @@ describe('runScenario', () => {
     }
   })
 
-  it('waitForTurnEnd times out for a missing log and an open logged turn', { timeout: 20_000 }, async () => {
+  it('waitForTurnEnd times out for a missing log and an open logged turn', async () => {
     const missing = await scenario({})
     await expect(runScenario(
       { steps: [...boot, { op: 'waitForTurnEnd', timeoutMs: 200 }] },
@@ -968,7 +971,7 @@ describe('runScenario', () => {
     )).rejects.toThrow(/did not persist turn\/end within 200ms/)
   })
 
-  it('waitForGoalPhase requires the requested durable goal phase', { timeout: 20_000 }, async () => {
+  it('waitForGoalPhase requires the requested durable goal phase', async () => {
     const reached = await scenario({
       prompt: 'hang-until-cancel',
       persistLogsOnCancel: true,
@@ -1031,7 +1034,7 @@ describe('runScenario', () => {
     }
   })
 
-  it('waitForSubagentTurnEnd requires a closed child work turn', { timeout: 20_000 }, async ({ onTestFinished }) => {
+  it('waitForSubagentTurnEnd requires a closed child work turn', async ({ onTestFinished }) => {
     isolateDiagnosticTimeout(onTestFinished)
     const closed = await scenario({
       prompt: 'hang-until-cancel',
@@ -1119,7 +1122,7 @@ describe('runScenario', () => {
     )).rejects.toThrow(/subagent child #2 did not persist closed turn 1 within 20ms/)
   })
 
-  it('waitForTitleAfterTurnEnd times out when the title precedes the boundary', { timeout: 20_000 }, async () => {
+  it('waitForTitleAfterTurnEnd times out when the title precedes the boundary', async () => {
     const { fixtureFile } = await scenario({
       prompt: 'hang-until-cancel',
       persistLogsOnCancel: true,
@@ -1144,7 +1147,7 @@ describe('runScenario', () => {
     )).rejects.toThrow(new RegExp(`did not persist session/title after turn/end within ${titleDiagnosticTimeoutMs}ms`))
   })
 
-  it('waitForEventAfterTurnEnd holds the app for a typed post-boundary record and times out otherwise', { timeout: 20_000 }, async ({ onTestFinished }) => {
+  it('waitForEventAfterTurnEnd holds the app for a typed post-boundary record and times out otherwise', async ({ onTestFinished }) => {
     isolateDiagnosticTimeout(onTestFinished)
     const late = await scenario({
       prompt: 'hang-until-cancel',
@@ -1194,7 +1197,7 @@ describe('runScenario', () => {
     )).rejects.toThrow(/did not persist user\/message after turn\/end within 20ms/)
   })
 
-  it('promptExpectError swallows a model-error response as the expected outcome', { timeout: 20_000 }, async () => {
+  it('promptExpectError swallows a model-error response as the expected outcome', async () => {
     const { fixtureFile } = await scenario({ prompt: 'error' })
     const result = await runScenario(
       { steps: [...boot, { op: 'promptExpectError', text: 'boom' }] },
@@ -1203,7 +1206,7 @@ describe('runScenario', () => {
     expect(result.rawStdout).toContain('model exploded')
   })
 
-  it('promptExpectError throws when the prompt unexpectedly succeeds (and teardown kills the live child)', { timeout: 20_000 }, async () => {
+  it('promptExpectError throws when the prompt unexpectedly succeeds (and teardown kills the live child)', async () => {
     const { fixtureFile } = await scenario({ prompt: 'respond' })
     await expect(runScenario(
       { steps: [...boot, { op: 'promptExpectError', text: 'fine' }] },
@@ -1211,7 +1214,7 @@ describe('runScenario', () => {
     )).rejects.toThrow(/expected the prompt to fail/)
   })
 
-  it('reports scenario and cleanup failures together', { timeout: 20_000 }, async () => {
+  it('reports scenario and cleanup failures together', async () => {
     const { fixtureFile } = await scenario({ prompt: 'respond' })
     const cleanupFailure = new Error('cleanup failed')
     fsControl.cleanupFailure = cleanupFailure
@@ -1229,7 +1232,7 @@ describe('runScenario', () => {
     expect(failures[1]).toBe(cleanupFailure)
   })
 
-  it('reports cleanup failure after an otherwise successful scenario', { timeout: 20_000 }, async () => {
+  it('reports cleanup failure after an otherwise successful scenario', async () => {
     const { fixtureFile } = await scenario({})
     const cleanupFailure = new Error('cleanup failed')
     fsControl.cleanupFailure = cleanupFailure
@@ -1244,7 +1247,7 @@ describe('runScenario', () => {
     expect((failure as AggregateError).errors as unknown[]).toEqual([cleanupFailure])
   })
 
-  it('newSessionExpectError swallows the rejection, with and without extra dirs', { timeout: 20_000 }, async () => {
+  it('newSessionExpectError swallows the rejection, with and without extra dirs', async () => {
     const { fixtureFile } = await scenario({ rejectExtraDirs: true })
     const result = await runScenario(
       { steps: [{ op: 'initialize' }, { op: 'newSessionExpectError', additionalDirectories: ['/elsewhere'] }] },
@@ -1262,7 +1265,7 @@ describe('runScenario', () => {
     expect(second.rawStdout).toContain('unsupported workspace scope')
   })
 
-  it('newSessionExpectError throws when session/new unexpectedly succeeds', { timeout: 20_000 }, async () => {
+  it('newSessionExpectError throws when session/new unexpectedly succeeds', async () => {
     const { fixtureFile } = await scenario({})
     await expect(runScenario(
       { steps: [{ op: 'initialize' }, { op: 'newSessionExpectError' }] },
@@ -1270,7 +1273,7 @@ describe('runScenario', () => {
     )).rejects.toThrow(/expected session\/new to be rejected/)
   })
 
-  it('a plain cancel step is forwarded (and ignored by an idle agent)', { timeout: 20_000 }, async () => {
+  it('a plain cancel step is forwarded (and ignored by an idle agent)', async () => {
     const { fixtureFile } = await scenario({})
     const result = await runScenario(
       { steps: [...boot, { op: 'cancel' }] },
@@ -1279,7 +1282,7 @@ describe('runScenario', () => {
     expect(result.sessionId).toBeDefined()
   })
 
-  it('a standalone cancel can wait for cwd-relative readiness', { timeout: 20_000 }, async () => {
+  it('a standalone cancel can wait for cwd-relative readiness', async () => {
     const { dir, fixtureFile } = await scenario({})
     const workspaceDir = join(dir, 'workspace')
     const { mkdir } = await import('node:fs/promises')
@@ -1292,7 +1295,7 @@ describe('runScenario', () => {
     expect(result.sessionId).toBeDefined()
   })
 
-  it('waitForFile holds the next input step behind cwd-relative readiness', { timeout: 20_000 }, async () => {
+  it('waitForFile holds the next input step behind cwd-relative readiness', async () => {
     const { dir, fixtureFile } = await scenario({})
     const workspaceDir = join(dir, 'workspace')
     const { mkdir } = await import('node:fs/promises')
@@ -1326,7 +1329,7 @@ describe('runScenario', () => {
     )).rejects.toThrow(message)
   })
 
-  it('rejects an unknown input op', { timeout: 20_000 }, async () => {
+  it('rejects an unknown input op', async () => {
     const { fixtureFile } = await scenario({})
     const bogus = { op: 'reticulate' } as unknown as InputStep
     await expect(runScenario(
@@ -1335,7 +1338,7 @@ describe('runScenario', () => {
     )).rejects.toThrow(/unknown input op/)
   })
 
-  it('harvests all logs primary-first, children by createdAt then id, skipping filesystem noise', { timeout: 20_000 }, async () => {
+  it('harvests all logs primary-first, children by createdAt then id, skipping filesystem noise', async () => {
     const { fixtureFile } = await scenario({
       strayRootFile: true,
       strayBucketFile: true,
@@ -1364,7 +1367,7 @@ describe('runScenario', () => {
     expect(result.sessionLogs[1]?.parentSession).toBe(result.sessionId)
   })
 
-  it('rejects an empty persisted generation', { timeout: 20_000 }, async () => {
+  it('rejects an empty persisted generation', async () => {
     const { fixtureFile } = await scenario({ logs: [{ file: 'b/empty/session.jsonl', lines: [] }] })
     await expect(runScenario(
       { steps: boot },
@@ -1372,7 +1375,7 @@ describe('runScenario', () => {
     )).rejects.toThrow('session.jsonl: session fixture is empty')
   })
 
-  it('rejects a persisted filename/header generation mismatch', { timeout: 20_000 }, async () => {
+  it('rejects a persisted filename/header generation mismatch', async () => {
     const { fixtureFile } = await scenario({
       logs: [{ file: 'b/mismatch/session.v1.jsonl', lines: [{ type: 'session', version: 0 }] }],
     })
@@ -1382,7 +1385,7 @@ describe('runScenario', () => {
     )).rejects.toThrow('filename declares Session format v1, header declares v0')
   })
 
-  it('yields no logs when the sessions root vanished', { timeout: 20_000 }, async () => {
+  it('yields no logs when the sessions root vanished', async () => {
     const { fixtureFile } = await scenario({ deleteSessionsRoot: true })
     const result = await runScenario(
       { steps: boot },
@@ -1391,7 +1394,7 @@ describe('runScenario', () => {
     expect(result.sessionLogs).toHaveLength(0)
   })
 
-  it('answers permission requests from the scripted queue by option kind, falling back to cancelled', { timeout: 20_000 }, async () => {
+  it('answers permission requests from the scripted queue by option kind, falling back to cancelled', async () => {
     const { fixtureFile } = await scenario({ permissionProbe: true })
     // Two prompts → two permission round-trips; one scripted answer, so the
     // second request exercises the exhausted-queue fallback.
@@ -1408,7 +1411,7 @@ describe('runScenario', () => {
     expect(second).toBeGreaterThan(first)
   })
 
-  it('selects a non-first offered option by kind', { timeout: 20_000 }, async () => {
+  it('selects a non-first offered option by kind', async () => {
     const { fixtureFile } = await scenario({ permissionProbe: true })
     const result = await runScenario(
       { steps: [...boot, { op: 'prompt', text: 'deny it' }], permissionAnswers: [{ kind: 'reject_once' }] },
@@ -1417,7 +1420,7 @@ describe('runScenario', () => {
     expect(result.rawStdout).toContain('permission:{\\"outcome\\":\\"selected\\",\\"optionId\\":\\"opt-reject\\"}')
   })
 
-  it('rejects the run on a scripted permission kind the agent never offered', { timeout: 20_000 }, async () => {
+  it('rejects the run on a scripted permission kind the agent never offered', async () => {
     const { fixtureFile } = await scenario({ permissionProbe: true })
     // The fake bin offers allow_once/reject_once; scripting allow_always is a
     // scenario bug. The agent is answered `cancelled` (it must not be able to

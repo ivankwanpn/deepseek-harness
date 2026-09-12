@@ -108,6 +108,31 @@ function mount(view: MarketplaceStatusView, overrides: Partial<Pick<
 }
 
 describe('marketplace controls', () => {
+  // The factory above fills both lists, so the empty rendering — the one a
+  // deployment with no marketplaces sees — had no case at all.
+  it('says each list is empty instead of rendering a list with no entries', async () => {
+    mount(status({ marketplaces: [], installed: [] }))
+
+    expect(await screen.findByText(en.marketplacesEmpty)).toBeTruthy()
+    expect(screen.getByText(en.installedEmpty)).toBeTruthy()
+  })
+
+  // The panel reads its snapshot on mount, so a refused read is the state a
+  // deployment behind a broken transport lands in; the retry has to ask again
+  // rather than re-render the failure.
+  it('renders a refused read with a retry that asks the Host again', async () => {
+    const reads = vi.fn()
+      .mockRejectedValueOnce(new Error('transport down'))
+      .mockResolvedValueOnce(status({ marketplaces: [], installed: [] }))
+    render(<MarketplaceSettingsTab {...props({ status: reads })} />)
+
+    expect(await screen.findByText(en.error)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: en.retry }))
+
+    await waitFor(() => { expect(reads).toHaveBeenCalledTimes(2) })
+    expect(await screen.findByText(en.marketplacesEmpty)).toBeTruthy()
+  })
+
   it('shows a toggle for every plugin that mounts something, and none for one that mounts nothing', async () => {
     mount(status())
 
@@ -169,6 +194,39 @@ describe('marketplace controls', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Uninstall' }))
 
     await waitFor(() => { expect(uninstall).toHaveBeenCalledWith('superpowers') })
+  })
+
+  // The dialog labels its close control and its cancel button with the same
+  // copy, so the footer's cancel is the last control carrying that name.
+  it('closes the uninstall confirmation without asking the Host', async () => {
+    const { uninstall } = mount(status())
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Uninstall' }))[0]!)
+    const dialog = await screen.findByRole('dialog', { name: /superpowers/u })
+    fireEvent.click(within(dialog).getByRole('checkbox'))
+    const cancels = within(dialog).getAllByRole('button', { name: en.uninstallCancel })
+    fireEvent.click(cancels[cancels.length - 1]!)
+
+    await waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull() })
+    expect(uninstall).not.toHaveBeenCalled()
+  })
+
+  it('prints a refusal that is not an Error as its own text', async () => {
+    const { uninstall } = mount(status(), {
+      // The panel reports whatever the write threw, so a refusal that arrives as
+      // a bare value still has to reach the card instead of a blank failure. The
+      // bare value is the case under test here, not an oversight.
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- the rejection reason is the subject.
+      uninstall: vi.fn(() => Promise.reject('marketplace refused')),
+    })
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Uninstall' }))[0]!)
+    const dialog = await screen.findByRole('dialog', { name: /superpowers/u })
+    fireEvent.click(within(dialog).getByRole('checkbox'))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Uninstall' }))
+
+    await waitFor(() => { expect(uninstall).toHaveBeenCalledWith('superpowers') })
+    expect(await screen.findByText(/marketplace refused/u)).toBeTruthy()
   })
 
   it('reports a refused write on the plugin it was refused for', async () => {

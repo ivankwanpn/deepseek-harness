@@ -389,6 +389,7 @@ export function MarketplaceSettingsTab({
           const plugin = confirming
           setAcknowledged(false)
           setConfirming(undefined)
+          /* v8 ignore next -- the confirmation renders only while `confirming` is set, so this handler closes over a defined plugin. */
           if (plugin === undefined) return
           void write(plugin, async () => (await uninstall(plugin)).status)
         }}

@@ -10,6 +10,7 @@ import {
   assignWeightedPartitions,
   collectPartitionDurations,
   coverageTestTimeoutArgs,
+  coverageTestTimeoutMs,
   forwardedCoverageArgs,
   parseCoveragePartitionCount,
   parseListOutput,
@@ -97,20 +98,28 @@ describe('coverage partition count', () => {
 })
 
 describe('coverage partition timeout', () => {
-  it('applies one configured timeout to tests, polling, and hooks', () => {
+  it('applies the configured budget to tests and hooks', () => {
     expect(coverageTestTimeoutArgs('30000')).toEqual([
       '--testTimeout=30000',
-      '--expect.poll.timeout=30000',
       '--hookTimeout=30000',
     ])
   })
 
+  it('resolves the configured budget for callers that declare it themselves', () => {
+    expect(coverageTestTimeoutMs('30000')).toBe(30000)
+  })
+
   it('keeps Vitest defaults when the timeout is absent', () => {
     expect(coverageTestTimeoutArgs(undefined)).toEqual([])
+    expect(coverageTestTimeoutMs(undefined)).toBeUndefined()
+    expect(coverageTestTimeoutArgs('')).toEqual([])
+    expect(coverageTestTimeoutMs('')).toBeUndefined()
   })
 
   it('rejects invalid timeout input', () => {
     expect(() => coverageTestTimeoutArgs('0'))
+      .toThrow(`${COVERAGE_TEST_TIMEOUT_ENV} must be a positive integer`)
+    expect(() => coverageTestTimeoutMs('0'))
       .toThrow(`${COVERAGE_TEST_TIMEOUT_ENV} must be a positive integer`)
   })
 })
@@ -417,6 +426,34 @@ describe('coverage partition coordinator', () => {
       expect(command.command).toBe('/tools/pnpm')
       expect(command.args[0]).toBe('exec')
     }
+  })
+
+  // A fork that dies mid-file costs that file its result and its coverage while
+  // the partition still exits zero, so nothing else answers for it. The gate then
+  // fails on a source file whose suite never ran.
+  it('refuses a partition whose forked worker died, naming the partition', async () => {
+    const root = await temporaryRoot()
+    const runCommand = vi.fn(async (command: CoverageCommand) => {
+      await writeBlob(command)
+      return command.label === 'partition 1/2'
+        ? {
+          exitCode: 0,
+          signalCode: null,
+          outputTail: '[vitest-pool]: Worker forks emitted error.\nCaused by: Error: Worker exited unexpectedly',
+        }
+        : passed
+    })
+    const coordinator = new CoveragePartitionCoordinator({
+      root,
+      partitions: 2,
+      pnpmEntrypoint: '/pnpm.cjs',
+      files: ['a.spec.ts', 'b.spec.ts'],
+      runCommand,
+    })
+
+    await expect(coordinator.run()).rejects.toThrow(
+      'coverage partitions: 1 partition process(es) lost a forked worker',
+    )
   })
 
   it('merges normal test failures and returns their failed status', async () => {

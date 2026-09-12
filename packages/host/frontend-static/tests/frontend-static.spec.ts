@@ -94,7 +94,7 @@ async function request(port: number, path: string, init?: RequestInit): Promise<
 }
 
 describe('real Loader composition', () => {
-  it('serves explicit index entries and files while preserving HTTP error semantics', { timeout: 60_000 }, async () => {
+  it('serves explicit index entries and files while preserving HTTP error semantics', async () => {
     const loaded = await loadComposition()
     const unloaded = [...loaded.loader.entries()]
       .filter(entry => entry.fiber === undefined && !entry.disabled)

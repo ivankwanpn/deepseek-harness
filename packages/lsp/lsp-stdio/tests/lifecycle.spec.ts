@@ -330,7 +330,7 @@ describe('lsp-stdio end to end over a fake server', () => {
       expect(firstTail).toBeDefined()
       const second = ctx.lsp.query(query('goToDefinition'))
       pending.push(Promise.allSettled([second]))
-      await vi.waitFor(() => { expect([...queues.values()][0]).not.toBe(firstTail) }, { timeout: 3000 })
+      await vi.waitFor(() => { expect([...queues.values()][0]).not.toBe(firstTail) })
       await writeFile(join(ws, 'a.ts'), 'const changed = 2\n')
       release.resolve(undefined)
       await Promise.all([first, second])

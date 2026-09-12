@@ -123,7 +123,7 @@ function spawn(
 }
 
 async function waitNoAgent(ctx: Context, id: SessionId): Promise<void> {
-  await vi.waitFor(() => { expect(ctx.agents.get(id)).toBeUndefined() }, { timeout: 5_000 })
+  await vi.waitFor(() => { expect(ctx.agents.get(id)).toBeUndefined() })
 }
 
 async function waitRunning(ctx: Context, id: SessionId): Promise<Agent> {
@@ -131,7 +131,7 @@ async function waitRunning(ctx: Context, id: SessionId): Promise<Agent> {
     const agent = ctx.agents.get(id)
     expect(agent?.status).toBe('running')
     return agent!
-  }, { timeout: 5_000 })
+  })
 }
 
 describe('Team identity and provisioning', () => {
@@ -1697,7 +1697,7 @@ describe('Team mailbox and waiting', () => {
     flushSpy.mockRestore()
   })
 
-  it('bounds Team runtime disposal when a continuation drain never settles', { timeout: 30_000 }, async () => {
+  it('bounds Team runtime disposal when a continuation drain never settles', async () => {
     const { ctx, lead, teamFiber } = await setup(['hang'], { disposalTimeoutMs: 25 })
     const started = await spawn(ctx, lead, 'stuck-worker')
     await waitRunning(ctx, started.member.id)

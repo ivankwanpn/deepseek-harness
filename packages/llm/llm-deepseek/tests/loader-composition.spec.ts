@@ -206,11 +206,11 @@ describe('llm-deepseek real dynamic composition', () => {
     await writeFile(settingsPath, `llm-deepseek:\n  baseURL: ${serverB.url}\n`)
     await vi.waitFor(() => {
       expect((ctx.get('settings')!.get(NS) as { baseURL?: string }).baseURL).toBe(serverB.url)
-    }, { timeout: 5000 })
+    })
     await writeFile(credentialsPath, 'version: 1\nrefs:\n  DEEPSEEK_API_KEY: rotated-key\n', { mode: 0o600 })
     await vi.waitFor(async () => {
       expect(await ctx.get('credentials')!.resolve(KEY_REF)).toEqual({ value: 'rotated-key', source: 'file' })
-    }, { timeout: 5000 })
+    })
 
     await assemble(ctx, { model: 'deepseek-v4-flash', messages: [] })
     expect(serverA.requests).toHaveLength(1)

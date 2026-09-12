@@ -334,20 +334,21 @@ describe('gate graph validation', () => {
     expect(completeBuiltBin?.after).not.toContain('docs-site-build')
   })
 
-  it('applies one configured test, polling, and hook timeout to both coverage gates', () => {
+  it('applies one configured test and hook timeout to both coverage gates', () => {
     const gates = withEnv('DSH_COVERAGE_TEST_TIMEOUT_MS', '15000', () =>
       withPnpmEntrypoint(() => gatesForMode('ci-windows-complete')))
 
     for (const id of ['coverage', 'coverage-exempt-heavy']) {
       expect(gates.find(subject => subject.id === id)?.args).toEqual(expect.arrayContaining([
         '--testTimeout=15000',
-        '--expect.poll.timeout=15000',
         '--hookTimeout=15000',
       ]))
     }
   })
 
-  it('keeps Vitest timeout defaults when the coverage override is absent', () => {
+  // Without the override the lane budget comes from vitest.config.ts, so the
+  // gate must not pass a smaller or duplicate timeout of its own.
+  it('passes no timeout arguments when the coverage override is absent', () => {
     const gates = withEnv('DSH_COVERAGE_TEST_TIMEOUT_MS', undefined, () =>
       withPnpmEntrypoint(() => gatesForMode('ci-windows-complete')))
 

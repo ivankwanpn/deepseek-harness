@@ -66,9 +66,11 @@ Prefer an observation that holds on every platform. When a case genuinely cannot
 
 ## Budget timeouts against the lane
 
-A `describe` or case timeout overrides the runner's `--testTimeout` instead of yielding to it, so a value below the lane's budget lowers what CI already granted — and the same literal reads as a widening on a host whose default is smaller. A suite bound by process creation takes the lane budget; a tighter value carries the reason it is tighter.
+A `describe` or case timeout overrides the runner's `--testTimeout` instead of yielding to it, so a value below the lane's budget lowers what CI already granted — and the same literal reads as a widening on a host whose default is smaller.
 
 Raise the hook budget with the test budget. Setup and teardown pay the same contention, so lifting only the case budget moves a contended failure into `afterEach`.
+
+Separate a budget that bounds a settling wait from one that is the subject under test. A settling budget — a wait or a case widened so a loaded host can finish — is deleted rather than restated, because the lane grants it already: `laneTestBudgetMs()` resolves that budget once for the Vitest projects, the `expect.poll` budget, the `vi.waitFor` and `vi.waitUntil` default that `scripts/test-wait-budget.ts` installs, and the coverage gates' CLI arguments. A budget that is the subject keeps its value and states the reason beside it: a case that proves a deadline must not inherit the lane's ceiling, and a case whose own work exceeds the lane states what it walks or builds.
 
 Where a timeout is the subject, keep the outer wait far larger than the timeout under test. A case proving that a 20 ms deadline fires must not race the harness's own wait, or load decides which deadline reports first.
 

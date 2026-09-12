@@ -21,7 +21,7 @@ afterEach(async () => {
 })
 
 describe('real Loader composition', () => {
-  it('registers on a real WebServer and dispatches a signed request', { timeout: 60_000 }, async () => {
+  it('registers on a real WebServer and dispatches a signed request', async () => {
     root = await mkdtemp(join(tmpdir(), 'dsh-webhook-github-loader-'))
     const configPath = join(root, 'cordis.yml')
     await writeFile(configPath, [

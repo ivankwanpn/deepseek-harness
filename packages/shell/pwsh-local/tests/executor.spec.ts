@@ -312,7 +312,7 @@ describe('spawn construction (pure, every platform)', () => {
 })
 
 describe.skipIf(!hasPwsh)('PwshLocalExecutor.run', () => {
-  it('resolves with output and the effective timeout', { timeout: 15_000 }, async () => {
+  it('resolves with output and the effective timeout', async () => {
     const { bash } = await setup({ timeoutMs: 10_000 })
     const result = await bash.run(bash.resolve({ command: 'Write-Output hi' }))
     expect(result.exitCode).toBe(0)

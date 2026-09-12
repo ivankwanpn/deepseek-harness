@@ -183,7 +183,7 @@ describe('real Loader composition', () => {
   // The 60s budget covers this file's static imports (webserver plus both
   // backend node halves through tsx), which dominate on cold caches; the
   // Loader itself resolves nothing here — `loader.internal` is a module map.
-  it('mounts the native backend for an attended loopback host and unmounts it on disposal', { timeout: 60_000 }, async () => {
+  it('mounts the native backend for an attended loopback host and unmounts it on disposal', async () => {
     stubAttendedHost()
     const { ctx, configPath } = await loadComposition('127.0.0.1')
 
@@ -220,7 +220,7 @@ describe('real Loader composition', () => {
     expect(await readFile(configPath, 'utf8')).not.toContain(NATIVE)
   })
 
-  it('mounts the browse backend under an SSH launch', { timeout: 60_000 }, async () => {
+  it('mounts the browse backend under an SSH launch', async () => {
     stubAttendedHost()
     vi.stubEnv('SSH_CONNECTION', '10.0.0.2 55 10.0.0.9 22')
     const { ctx } = await loadComposition('127.0.0.1')
@@ -233,7 +233,7 @@ describe('real Loader composition', () => {
     expect(picker.capability().kind).toBe('browse')
   })
 
-  it('mounts the browse backend for an all-interfaces bind even on an attended host', { timeout: 60_000 }, async () => {
+  it('mounts the browse backend for an all-interfaces bind even on an attended host', async () => {
     stubAttendedHost()
     const { ctx } = await loadComposition('0.0.0.0')
 
@@ -243,7 +243,7 @@ describe('real Loader composition', () => {
     expect(entryNames(ctx)).not.toContain(NATIVE_SURFACE)
   })
 
-  it('unmounts the backend when the surface entry fails to load', { timeout: 60_000 }, async () => {
+  it('unmounts the backend when the surface entry fails to load', async () => {
     stubAttendedHost()
     await expect(loadComposition('127.0.0.1', { failSurface: true })).rejects.toThrow(/surface import failed/)
 
@@ -254,7 +254,7 @@ describe('real Loader composition', () => {
     expect(context!.get('directoryPicker')).toBeUndefined()
   })
 
-  it('tolerates the mounted entry being removed by the tree before the chooser unloads', { timeout: 60_000 }, async () => {
+  it('tolerates the mounted entry being removed by the tree before the chooser unloads', async () => {
     stubAttendedHost()
     const { ctx, configPath } = await loadComposition('127.0.0.1')
 
@@ -274,7 +274,7 @@ describe('real Loader composition', () => {
     expect(renameControl.attempts).toBeGreaterThanOrEqual(2)
   })
 
-  it('reports a terminal debounced-write failure again to the teardown owner', { timeout: 60_000 }, async () => {
+  it('reports a terminal debounced-write failure again to the teardown owner', async () => {
     stubAttendedHost()
     const { ctx } = await loadComposition('127.0.0.1')
     const autoEntry = [...ctx.loader.entries()].find(entry => entry.options.name === AUTO)!

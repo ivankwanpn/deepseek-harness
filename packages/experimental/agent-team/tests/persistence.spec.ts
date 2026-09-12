@@ -20,7 +20,6 @@ import type { TeamMemberSnapshot, TeamMessageSnapshot, TeamTaskSnapshot } from '
 import { TestSessionQuery } from './test-session-query.ts'
 
 const SIGNAL = new AbortController().signal
-const PERSISTENCE_TEST_TIMEOUT_MS = 15_000
 const roots: string[] = []
 const contexts = new Set<Context>()
 
@@ -165,9 +164,7 @@ async function persistedChild(
 
 for (const backend of backends) {
   describe(`${backend.name} Agent Teams recovery`, () => {
-    it('reconciles a persisted child to active and a missing child to durable failed', {
-      timeout: PERSISTENCE_TEST_TIMEOUT_MS,
-    }, async () => {
+    it('reconciles a persisted child to active and a missing child to durable failed', async () => {
       const storageRoot = mkdtempSync(join(tmpdir(), `dsh-team-${backend.name.toLowerCase()}-`))
       roots.push(storageRoot)
       const first = await stack(backend, storageRoot, [textResponse('initial child answer')])
@@ -205,7 +202,7 @@ for (const backend of backends) {
         },
         signal: SIGNAL,
       })
-      await vi.waitFor(() => { expect(first.ctx.agents.get(childId)).toBeUndefined() }, { timeout: 5_000 })
+      await vi.waitFor(() => { expect(first.ctx.agents.get(childId)).toBeUndefined() })
       expect((await storedEvents(first.ctx, childId))
         .some(event => event.type === 'user/message')).toBe(true)
       await first.dispose()
@@ -224,7 +221,7 @@ for (const backend of backends) {
         const failedMember = durable(failedHandle.agent).members[0]
         expect(failedMember?.phase).toBe('failed')
         expect(failedMember?.error).toContain('child Session recovery failed')
-      }, { timeout: 5_000 })
+      })
 
       const receipt = await second.ctx.agentTeams.sendMessage(activeHandle.agent, {
         target: 'recoverable',
@@ -232,7 +229,7 @@ for (const backend of backends) {
         signal: SIGNAL,
       })
       expect(receipt.status).toBe('accepted')
-      await vi.waitFor(() => { expect(second.ctx.agents.get(childId)).toBeUndefined() }, { timeout: 5_000 })
+      await vi.waitFor(() => { expect(second.ctx.agents.get(childId)).toBeUndefined() })
       await vi.waitFor(() => { expect(durable(activeHandle.agent).pendingMessages).toEqual([]) })
 
       await activeHandle.dispose()
@@ -240,9 +237,7 @@ for (const backend of backends) {
       await second.dispose()
     })
 
-    it('reconciles a provisioning child whose initial prompt is durably pending', {
-      timeout: PERSISTENCE_TEST_TIMEOUT_MS,
-    }, async () => {
+    it('reconciles a provisioning child whose initial prompt is durably pending', async () => {
       const storageRoot = mkdtempSync(join(tmpdir(), `dsh-team-pending-${backend.name.toLowerCase()}-`))
       roots.push(storageRoot)
       const rootId = SessionId(`${backend.name.toLowerCase()}-pending-root`)
@@ -281,9 +276,7 @@ for (const backend of backends) {
       await second.dispose()
     })
 
-    it('retries queued mail through cold-resume Steer after restart', {
-      timeout: PERSISTENCE_TEST_TIMEOUT_MS,
-    }, async () => {
+    it('retries queued mail through cold-resume Steer after restart', async () => {
       const storageRoot = mkdtempSync(join(tmpdir(), `dsh-team-mail-${backend.name.toLowerCase()}-`))
       roots.push(storageRoot)
       const rootId = SessionId(`${backend.name.toLowerCase()}-mail-root`)
@@ -298,7 +291,7 @@ for (const backend of backends) {
         provider: 'spawn',
         signal: SIGNAL,
       })
-      await vi.waitFor(() => { expect(first.ctx.agents.get(started.member.id)).toBeUndefined() }, { timeout: 5_000 })
+      await vi.waitFor(() => { expect(first.ctx.agents.get(started.member.id)).toBeUndefined() })
       vi.spyOn(first.ctx.sessionPersistence, 'open')
         .mockRejectedValueOnce(new Error('temporary target read failure'))
       const queued = await first.ctx.agentTeams.sendMessage(firstLead, {
@@ -315,7 +308,7 @@ for (const backend of backends) {
         resumeSessionId: rootId,
         agentOptions: { provider: 'mock', model: 'mock' },
       })
-      await vi.waitFor(() => { expect(second.ctx.agents.get(started.member.id)).toBeUndefined() }, { timeout: 5_000 })
+      await vi.waitFor(() => { expect(second.ctx.agents.get(started.member.id)).toBeUndefined() })
       await vi.waitFor(() => { expect(durable(rootHandle.agent).pendingMessages).toEqual([]) })
 
       const child = await storedEvents(second.ctx, started.member.id)
@@ -329,9 +322,7 @@ for (const backend of backends) {
       await second.dispose()
     })
 
-    it('acknowledges target-recorded mail after restart without delivering it twice', {
-      timeout: PERSISTENCE_TEST_TIMEOUT_MS,
-    }, async () => {
+    it('acknowledges target-recorded mail after restart without delivering it twice', async () => {
       const storageRoot = mkdtempSync(join(tmpdir(), `dsh-team-dedup-${backend.name.toLowerCase()}-`))
       roots.push(storageRoot)
       const rootId = SessionId(`${backend.name.toLowerCase()}-dedup-root`)
@@ -347,7 +338,7 @@ for (const backend of backends) {
         provider: 'spawn',
         signal: SIGNAL,
       })
-      await vi.waitFor(() => { expect(first.ctx.agents.get(started.member.id)).toBeUndefined() }, { timeout: 5_000 })
+      await vi.waitFor(() => { expect(first.ctx.agents.get(started.member.id)).toBeUndefined() })
 
       const targetHandle = await first.ctx.agents.resume({
         resumeSessionId: started.member.id,
@@ -436,9 +427,7 @@ for (const backend of backends) {
       await second.dispose()
     })
 
-    it('acknowledges durably pending target mail without cold-resume duplication', {
-      timeout: PERSISTENCE_TEST_TIMEOUT_MS,
-    }, async () => {
+    it('acknowledges durably pending target mail without cold-resume duplication', async () => {
       const storageRoot = mkdtempSync(join(tmpdir(), `dsh-team-inbox-${backend.name.toLowerCase()}-`))
       roots.push(storageRoot)
       const rootId = SessionId(`${backend.name.toLowerCase()}-inbox-root`)

@@ -115,11 +115,11 @@ async function waitRunning(ctx: Context, id: SessionId): Promise<Agent> {
     const child = ctx.agents.get(id)
     expect(child?.status).toBe('running')
     return child!
-  }, { timeout: 5_000 })
+  })
 }
 
 async function waitNoAgent(ctx: Context, id: SessionId): Promise<void> {
-  await vi.waitFor(() => { expect(ctx.agents.get(id)).toBeUndefined() }, { timeout: 5_000 })
+  await vi.waitFor(() => { expect(ctx.agents.get(id)).toBeUndefined() })
 }
 
 describe('dsh-tool-team', () => {
@@ -160,7 +160,7 @@ describe('dsh-tool-team', () => {
     expect(denied.isError).toBe(true)
     expect(text(denied)).toContain('only the Team Lead')
     await execute(ctx, lead, 'interrupt_agent', { target: 'tool-worker' })
-    await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() }, { timeout: 5_000 })
+    await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() })
   })
 
   it('returns actionable no-progress output and renders structured wait cancellation', async () => {
@@ -267,7 +267,7 @@ describe('dsh-tool-team', () => {
     const childInterrupt = await execute(ctx, child, 'interrupt_agent', { target: 'json-worker' })
     expect(childInterrupt.isError).toBe(true)
     await execute(ctx, lead, 'interrupt_agent', { target: 'json-worker' })
-    await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() }, { timeout: 5_000 })
+    await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() })
   })
 
   it('adapts optional task filters, mutations, pagination, and default waiting', async () => {
@@ -342,7 +342,7 @@ describe('dsh-tool-team', () => {
     expect((await wake).isError).toBe(false)
 
     await execute(ctx, lead, 'interrupt_agent', { target: 'fork-worker' })
-    await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() }, { timeout: 5_000 })
+    await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() })
   })
 
   it('removes and reinstalls every scoped registration across plugin HMR without stopping the child', async () => {
@@ -364,7 +364,7 @@ describe('dsh-tool-team', () => {
     expect((await assembly(ctx, child)).tools.map(schema => schema.name).filter(name => TOOL_NAMES.includes(name)).sort())
       .toEqual(TOOL_NAMES)
     await execute(ctx, lead, 'interrupt_agent', { target: 'hmr-worker' })
-    await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() }, { timeout: 5_000 })
+    await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() })
     await replacement.dispose()
   })
 
@@ -408,7 +408,7 @@ describe('dsh-tool-team', () => {
       request: { prompt: [{ type: 'text', text: 'finish' }], parent: lead },
       signal: SIGNAL,
     })
-    await vi.waitFor(() => { expect(ctx.agents.get(ordinary.childId)).toBeUndefined() }, { timeout: 5_000 })
+    await vi.waitFor(() => { expect(ctx.agents.get(ordinary.childId)).toBeUndefined() })
   })
 
   it('reinstalls Team scope before a cold-resumed teammate request', async () => {
@@ -417,7 +417,7 @@ describe('dsh-tool-team', () => {
       name: 'cold-worker', description: 'cold worker', prompt: 'finish once',
     })
     const childId = spawnedChildId(spawned)
-    await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() }, { timeout: 5_000 })
+    await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() })
 
     await ctx.agentTeams.sendMessage(lead, {
       target: 'cold-worker',
@@ -429,7 +429,7 @@ describe('dsh-tool-team', () => {
       .filter(name => TOOL_NAMES.includes(name)).sort()).toEqual(TOOL_NAMES)
     expect(renderPrompt(await assembly(ctx, resumed))).toContain('Your Team role is teammate; your Team name is cold-worker')
     await execute(ctx, lead, 'interrupt_agent', { target: 'cold-worker' })
-    await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() }, { timeout: 5_000 })
+    await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() })
   })
 
   it('fails safely without a calling Agent and has the function-plugin export shape', async () => {
@@ -452,7 +452,7 @@ describe('dsh-tool-team', () => {
     })
     expect(result.isError).toBe(false)
     const childId = spawnedChildId(result)
-    await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() }, { timeout: 5_000 })
+    await vi.waitFor(() => { expect(ctx.agents.get(childId)).toBeUndefined() })
     expect(ctx.agentTeams.listMembers(lead)[1]).toMatchObject({ provider: 'team-fresh' })
   })
 })

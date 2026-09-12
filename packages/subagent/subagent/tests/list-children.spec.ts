@@ -104,7 +104,7 @@ async function startChild(
   })
   await vi.waitFor(() => {
     expect(ctx.agents.get(started.childId)).toBeUndefined()
-  }, { timeout: 5_000 })
+  })
   return started.childId
 }
 
@@ -920,7 +920,7 @@ describe('SubagentRuntime.listChildren', () => {
     const header = (await ctx.sessionPersistence.list()).find(snapshot => snapshot.header.id === childId)?.header
     await vi.waitFor(() => {
       expect(ctx.sessionProjectionCache.cachedSnapshot(header!, SessionLogOffset(0))?.values.subagent).toBeDefined()
-    }, { timeout: 5_000 })
+    })
     const inspect = vi.spyOn(ctx.sessionPersistence, 'open')
     await expect(ctx.subagents.listChildren(parent.id)).resolves.toEqual([{
       kind: 'child', id: childId, label: 'cached child', mode: 'continuable',
@@ -1205,7 +1205,7 @@ describe('SubagentRuntime.listDescendants', () => {
   })
 
 
-  it('walks a deeply nested ordinary-session chain without consuming the call stack', { timeout: 20_000 }, async () => {
+  it('walks a deeply nested ordinary-session chain without consuming the call stack', async () => {
     const { ctx, parent } = await setup([])
     const depth = 10_000
     let parentId = parent.id
@@ -1228,7 +1228,7 @@ describe('SubagentRuntime.listDescendants', () => {
     }])
   })
 
-  it('discovers continuable descendants below ordinary and one-shot intermediates', { timeout: 20_000 }, async () => {
+  it('discovers continuable descendants below ordinary and one-shot intermediates', async () => {
     const { ctx, parent } = await setup([textResponse('one shot')])
     // An ordinary fork has no descriptor: omitted itself, subtree still walked.
     const fork = ctx.sessions.fork(parent.session, undefined, SessionId('plain-fork'))
