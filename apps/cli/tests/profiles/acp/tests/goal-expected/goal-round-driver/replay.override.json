@@ -3,8 +3,8 @@
     "kind": "chunks",
     "chunks": [
       { "type": "block-start", "index": 0, "blockType": "tool-call" },
-      { "type": "tool-call-delta", "index": 0, "id": "call_goal_create", "name": "create_goal", "argumentsDelta": "{\"objective\":\"Finish the ACP goal-round-driver snapshot proof\",\"max_goal_rounds\":2}" },
-      { "type": "block-end", "index": 0, "block": { "type": "tool-call", "id": "call_goal_create", "name": "create_goal", "arguments": "{\"objective\":\"Finish the ACP goal-round-driver snapshot proof\",\"max_goal_rounds\":2}" } },
+      { "type": "tool-call-delta", "index": 0, "id": "call_goal_create", "name": "create_goal", "argumentsDelta": "{\"objective\":\"Finish the ACP goal-round-driver snapshot proof\"}" },
+      { "type": "block-end", "index": 0, "block": { "type": "tool-call", "id": "call_goal_create", "name": "create_goal", "arguments": "{\"objective\":\"Finish the ACP goal-round-driver snapshot proof\"}" } },
       { "type": "usage", "usage": { "inputTokens": 20, "outputTokens": 8 } },
       { "type": "finish", "reason": { "kind": "tool-calls" } }
     ]
