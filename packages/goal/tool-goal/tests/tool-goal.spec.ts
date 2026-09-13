@@ -220,6 +220,10 @@ describe('goal tool registration and presentation', () => {
     toolGoal.apply(ctx, {})
     const section = (await ctx.systemPrompt.assemble()).sections.find(item => item.name === 'tool:goal')
     expect(section?.text).toContain('at least 3 consecutive goal rounds')
+    // A human asking for a round cap or a budget must reach the tools that can apply it.
+    expect(section?.text).toContain('create_goal takes the budgets')
+    expect(section?.text).toContain('update_goal action edit changes the round cap or either budget')
+    expect(section?.text).toContain('Whatever the human leaves unnamed keeps the deployment default')
   })
 })
 
