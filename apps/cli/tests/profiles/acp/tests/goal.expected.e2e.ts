@@ -6,6 +6,7 @@ import {
   normalizeSessionSnapshot,
   normalizeSessionSnapshots,
   normalizeStdout,
+  omitAcpTopologyUpdates,
   runScenario,
   type AgentUnderTest,
   type InputScript,
@@ -109,7 +110,7 @@ describe('same-session goal snapshot through the ACP automation driver', () => {
       sessionIds: [result.sessionId, log.id].filter((id): id is string => id !== undefined),
       cwd: result.cwd,
     }
-    const stdout = normalizeStdout(result.rawStdout, context)
+    const stdout = omitAcpTopologyUpdates(normalizeStdout(result.rawStdout, context))
     const session = normalizeGoalLog(log.content, context)
     if (refreshing) {
       await Promise.all([
@@ -166,7 +167,7 @@ describe('same-session goal snapshot through the ACP automation driver', () => {
       sessionIds: [result.sessionId, log.id].filter((id): id is string => id !== undefined),
       cwd: result.cwd,
     }
-    const stdout = normalizeStdout(result.rawStdout, context)
+    const stdout = omitAcpTopologyUpdates(normalizeStdout(result.rawStdout, context))
     const session = normalizeGoalLog(log.content, context)
     const wrapupStdoutExpected = join(wrapupDir, 'stdout.expected.jsonl')
     const wrapupSessionExpected = join(wrapupDir, 'session.expected.jsonl')

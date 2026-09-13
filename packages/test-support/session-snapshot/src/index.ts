@@ -95,6 +95,7 @@ export {
   normalizedHeaders,
   normalizedSystemPrompts,
   normalizedToolSchemas,
+  omitAcpTopologyUpdates,
   parseSystemPromptSnapshot,
   parseToolSchemasSnapshot,
   refreshFixtureReplacements,
