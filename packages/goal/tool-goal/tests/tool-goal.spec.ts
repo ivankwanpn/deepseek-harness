@@ -223,7 +223,7 @@ describe('goal tool registration and presentation', () => {
     // A human asking for a round cap or a budget must reach the tools that can apply it.
     expect(section?.text).toContain('create_goal takes the budgets')
     expect(section?.text).toContain('update_goal action edit changes the round cap or either budget')
-    expect(section?.text).toContain('Whatever the human leaves unnamed keeps the deployment default')
+    expect(section?.text).toContain('keeps the deployment limit, and no request may exceed it')
   })
 })
 

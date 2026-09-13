@@ -196,10 +196,18 @@ export const goalProjectionDefinition = {
 export interface Config {
   /** Round cap used when a create request omits its own; absent or null leaves it unbounded. */
   defaultMaxGoalRounds?: number
-  /** Token ceiling used when a create request omits its own; absent leaves the goal unbounded. */
-  defaultMaxGoalTokens?: number
-  /** Active model-and-tool millisecond ceiling used when a create request omits its own. */
-  defaultMaxGoalWorkMs?: number
+  /**
+   * Token ceiling for every goal this deployment admits. It is the default a
+   * create request inherits and the maximum any request may name; unset leaves
+   * goals unbounded in tokens.
+   */
+  maxGoalTokens?: number
+  /**
+   * Active model-and-tool millisecond ceiling for every goal this deployment
+   * admits. It is the default a create request inherits and the maximum any
+   * request may name; unset leaves goals unbounded in active work.
+   */
+  maxGoalWorkMs?: number
 }
 
 /** Settings namespace carrying the deployment defaults for goal creation. */
@@ -209,10 +217,10 @@ export const GOAL_SETTINGS_NAMESPACE = 'goal'
 export interface ResolvedConfig {
   /** Validated default round cap, or null while continuation is unbounded by rounds. */
   defaultMaxGoalRounds: number | null
-  /** Validated default token ceiling, or null while unbounded. */
-  defaultMaxGoalTokens: number | null
-  /** Validated default active-work ceiling in milliseconds, or null while unbounded. */
-  defaultMaxGoalWorkMs: number | null
+  /** Validated token ceiling that doubles as the default, or null while unbounded. */
+  maxGoalTokens: number | null
+  /** Validated active-work ceiling in milliseconds that doubles as the default, or null while unbounded. */
+  maxGoalWorkMs: number | null
 }
 
 /** Process-local activation state crossing the synchronous append boundary. */
@@ -278,19 +286,33 @@ function resolveMaxGoalRounds(value: number | null | undefined, fallback: number
 }
 
 /**
- * Resolve one caller-visible budget ceiling. An omitted field keeps the
- * deployment default, an explicit `null` removes the budget, and a named
- * value must be a positive safe integer.
- * @param value - caller value, the deployment default, or an explicit removal.
- * @param fallback - resolved deployment default for an omitted field.
+ * Resolve one caller-visible budget ceiling against the deployment's own
+ * limit. An omitted field inherits that limit, a named value must be a
+ * positive safe integer no larger than it, and an explicit `null` is accepted
+ * only while the deployment sets no limit. The deployment's value is therefore
+ * both the default a request inherits and the most any request may be granted.
+ * @param value - caller value, or an explicit removal.
+ * @param limit - resolved deployment ceiling, or null while this deployment bounds nothing.
  * @param field - caller-visible field name used in the rejection message.
  * @returns the resolved ceiling, or null while unbounded.
  */
-function resolveBudget(value: number | null | undefined, fallback: number | null, field: string): number | null {
-  if (value === undefined) return fallback
-  if (value === null) return null
+function resolveBudget(value: number | null | undefined, limit: number | null, field: string): number | null {
+  if (value === undefined) return limit
+  if (value === null) {
+    if (limit === null) return null
+    throw new GoalError(
+      `${field} cannot be unbounded while the deployment bounds it at ${limit}`,
+      'GOAL_BUDGET_EXCEEDS_LIMIT',
+    )
+  }
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new GoalError(`${field} must be a positive safe integer or null`, 'GOAL_INVALID_BUDGET')
+  }
+  if (limit !== null && value > limit) {
+    throw new GoalError(
+      `${field} ${value} exceeds the deployment limit of ${limit}`,
+      'GOAL_BUDGET_EXCEEDS_LIMIT',
+    )
   }
   return value
 }
@@ -323,12 +345,26 @@ function resolveObjective(value: string): string {
   return value.trim()
 }
 
+/**
+ * Validate one configured deployment ceiling.
+ * @param value - configured ceiling, absent while this deployment bounds nothing.
+ * @param field - configuration field name used in the rejection message.
+ * @returns the validated ceiling, or null while unbounded.
+ */
+function validateDeploymentCeiling(value: number | undefined, field: string): number | null {
+  if (value === undefined) return null
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new GoalError(`${field} must be a positive safe integer`, 'GOAL_INVALID_BUDGET')
+  }
+  return value
+}
+
 /** Materialize one configuration section into validated deployment defaults. */
 function resolveDefaults(config: Config): ResolvedConfig {
   return {
     defaultMaxGoalRounds: resolveMaxGoalRounds(config.defaultMaxGoalRounds, null),
-    defaultMaxGoalTokens: resolveBudget(config.defaultMaxGoalTokens, null, 'defaultMaxGoalTokens'),
-    defaultMaxGoalWorkMs: resolveBudget(config.defaultMaxGoalWorkMs, null, 'defaultMaxGoalWorkMs'),
+    maxGoalTokens: validateDeploymentCeiling(config.maxGoalTokens, 'maxGoalTokens'),
+    maxGoalWorkMs: validateDeploymentCeiling(config.maxGoalWorkMs, 'maxGoalWorkMs'),
   }
 }
 
@@ -337,8 +373,8 @@ function resolveCreateGoal(request: CreateGoalRequest, defaults: ResolvedConfig)
   return {
     objective: resolveObjective(request.objective),
     maxGoalRounds: resolveMaxGoalRounds(request.maxGoalRounds, defaults.defaultMaxGoalRounds),
-    maxGoalTokens: resolveBudget(request.maxGoalTokens, defaults.defaultMaxGoalTokens, 'maxGoalTokens'),
-    maxGoalWorkMs: resolveBudget(request.maxGoalWorkMs, defaults.defaultMaxGoalWorkMs, 'maxGoalWorkMs'),
+    maxGoalTokens: resolveBudget(request.maxGoalTokens, defaults.maxGoalTokens, 'maxGoalTokens'),
+    maxGoalWorkMs: resolveBudget(request.maxGoalWorkMs, defaults.maxGoalWorkMs, 'maxGoalWorkMs'),
   }
 }
 
@@ -365,8 +401,8 @@ export class GoalService extends TypertRemoteService {
 
   static Config: z<Config> = z.object({
     defaultMaxGoalRounds: z.number().step(1).min(1),
-    defaultMaxGoalTokens: z.number().step(1).min(1),
-    defaultMaxGoalWorkMs: z.number().step(1).min(1),
+    maxGoalTokens: z.number().step(1).min(1),
+    maxGoalWorkMs: z.number().step(1).min(1),
   })
 
   private source: () => Config
@@ -487,6 +523,7 @@ export class GoalService extends TypertRemoteService {
     const [state, runtime] = this.prepareMutation(agent)
     const currentState = this.expectCurrent(state, ref)
     const current = currentState.goal
+    const defaults = this.defaults()
     if (request.objective === undefined && request.maxGoalRounds === undefined
       && request.maxGoalTokens === undefined && request.maxGoalWorkMs === undefined) {
       throw new GoalError(
@@ -503,10 +540,10 @@ export class GoalService extends TypertRemoteService {
         : { maxGoalRounds: resolveMaxGoalRounds(request.maxGoalRounds, null) },
       ...request.maxGoalTokens === undefined
         ? {}
-        : { maxGoalTokens: resolveBudget(request.maxGoalTokens, null, 'maxGoalTokens') },
+        : { maxGoalTokens: resolveBudget(request.maxGoalTokens, defaults.maxGoalTokens, 'maxGoalTokens') },
       ...request.maxGoalWorkMs === undefined
         ? {}
-        : { maxGoalWorkMs: resolveBudget(request.maxGoalWorkMs, null, 'maxGoalWorkMs') },
+        : { maxGoalWorkMs: resolveBudget(request.maxGoalWorkMs, defaults.maxGoalWorkMs, 'maxGoalWorkMs') },
     }
     return this.commitCurrent(agent, currentState, runtime, 'edit', goal, runtime.activation, {
       roundsStarted: currentState.roundsStarted,

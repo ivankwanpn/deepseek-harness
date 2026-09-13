@@ -13,7 +13,7 @@ import type { GoalKey } from './locales.ts'
 import css from './GoalDefaultsRow.module.css'
 
 /** The three `goal` settings fields the row edits. */
-export type GoalLimitField = 'defaultMaxGoalRounds' | 'defaultMaxGoalTokens' | 'defaultMaxGoalWorkMs'
+export type GoalLimitField = 'defaultMaxGoalRounds' | 'maxGoalTokens' | 'maxGoalWorkMs'
 
 /** Injected business face: the two scope writes the row performs. */
 export interface GoalDefaultsRowInjected {
@@ -31,8 +31,8 @@ export type GoalDefaultsRowComponentProps =
 /** The editable fields in display order, with their copy. */
 const FIELDS = [
   { field: 'defaultMaxGoalRounds', label: 'defaults.rounds.label', hint: 'defaults.rounds.hint' },
-  { field: 'defaultMaxGoalTokens', label: 'defaults.tokens.label', hint: 'defaults.tokens.hint' },
-  { field: 'defaultMaxGoalWorkMs', label: 'defaults.work.label', hint: 'defaults.work.hint' },
+  { field: 'maxGoalTokens', label: 'defaults.tokens.label', hint: 'defaults.tokens.hint' },
+  { field: 'maxGoalWorkMs', label: 'defaults.work.label', hint: 'defaults.work.hint' },
 ] as const satisfies readonly { field: GoalLimitField; label: GoalKey; hint: GoalKey }[]
 
 /**
@@ -60,8 +60,8 @@ export function GoalDefaultsRow({ t, useStore, setLimit, clearLimit }: GoalDefau
   const [draft, setDraft] = useState('')
   const resolved: Record<GoalLimitField, number | null> = {
     defaultMaxGoalRounds: rounds,
-    defaultMaxGoalTokens: tokens,
-    defaultMaxGoalWorkMs: workMs,
+    maxGoalTokens: tokens,
+    maxGoalWorkMs: workMs,
   }
   const draftRejected = editing !== null && draft.trim().length > 0 && parseLimit(draft) === undefined
   return (

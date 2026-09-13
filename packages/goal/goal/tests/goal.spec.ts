@@ -18,8 +18,7 @@ import * as SessionStats from '@deepseek-ai/dsh-session-stats'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import { createInboxStub } from '@deepseek-ai/dsh-agent-loop-testkit'
 
-/** Writable memory provider for the goal settings section spec. */
-class MemorySettings extends SettingsProvider {
+/** Writable memory provider for the goal settings section spec. */class MemorySettings extends SettingsProvider {
   readonly doc: Record<string, unknown> = {}
   readonly writable = true
 
@@ -99,7 +98,30 @@ function stubAgent(
   return stubAgentForSession(session, ctx)
 }
 
-async function harness(config: { defaultMaxGoalRounds?: number } = {}) {
+/** Mount the domain over the memory settings provider and both accounting meters. */
+async function meteredHarness(config: {
+  defaultMaxGoalRounds?: number
+  maxGoalTokens?: number
+  maxGoalWorkMs?: number
+} = {}) {
+  const ctx = new Context()
+  await ctx.plugin(SessionStore)
+  await ctx.plugin(SessionProjectionRegistry)
+  await ctx.plugin(AgentRegistry)
+  await ctx.plugin(MemorySettings)
+  await ctx.plugin(SessionStats)
+  await ctx.plugin(TokenMeter)
+  await ctx.plugin(GoalService, config)
+  const stub = stubAgent(`goal-settings-${Math.random()}`, undefined, ctx)
+  ctx.agents.register(stub.agent)
+  return { ctx, ...stub }
+}
+
+async function harness(config: {
+  defaultMaxGoalRounds?: number
+  maxGoalTokens?: number
+  maxGoalWorkMs?: number
+} = {}) {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
   await ctx.plugin(SessionProjectionRegistry)
@@ -214,29 +236,14 @@ describe('GoalService creation and replay', () => {
       .toThrow(expect.objectContaining({ code: 'GOAL_INVALID_MAX_ROUNDS' }))
   })
 
-  /** Mount the domain over the memory settings provider, whose section can be written at runtime. */
-  async function settingsHarness(config: { defaultMaxGoalRounds?: number } = {}) {
-    const ctx = new Context()
-    await ctx.plugin(SessionStore)
-    await ctx.plugin(SessionProjectionRegistry)
-    await ctx.plugin(AgentRegistry)
-    await ctx.plugin(MemorySettings)
-    await ctx.plugin(SessionStats)
-    await ctx.plugin(TokenMeter)
-    await ctx.plugin(GoalService, config)
-    const stub = stubAgent(`goal-settings-${Math.random()}`, undefined, ctx)
-    ctx.agents.register(stub.agent)
-    return { ctx, ...stub }
-  }
-
   it('applies the defaults a registered settings section carries', async () => {
-    const first = await settingsHarness({ defaultMaxGoalRounds: 17 })
+    const first = await meteredHarness({ defaultMaxGoalRounds: 17 })
     expect(first.ctx.goals.create(first.agent, { objective: 'from composition' }))
       .toMatchObject({ maxGoalRounds: 17, maxGoalTokens: null })
 
     await first.ctx.settings.update(GOAL_SETTINGS_NAMESPACE, {
       defaultMaxGoalRounds: 3,
-      defaultMaxGoalTokens: 500,
+      maxGoalTokens: 500,
     })
 
     // The deployment's own composed entry is now the base layer under the user
@@ -248,7 +255,7 @@ describe('GoalService creation and replay', () => {
   })
 
   it('refuses a stored default that no create could act on', async () => {
-    const { ctx } = await settingsHarness({ defaultMaxGoalRounds: 17 })
+    const { ctx } = await meteredHarness({ defaultMaxGoalRounds: 17 })
     await expect(ctx.settings.update(GOAL_SETTINGS_NAMESPACE, { defaultMaxGoalRounds: 2 ** 53 }))
       .rejects.toThrow(expect.objectContaining({ code: 'GOAL_INVALID_MAX_ROUNDS' }))
   })
@@ -1055,5 +1062,45 @@ describe('goal replay validation', () => {
       { maxGoalTokens: null, maxGoalWorkMs: null },
     )
     expect(cleared).toMatchObject({ maxGoalTokens: null, maxGoalWorkMs: null })
+  })
+
+  it('grants no more than the deployment ceiling and inherits it by default', async () => {
+    const test = await meteredHarness({ maxGoalTokens: 5_000, maxGoalWorkMs: 90_000 })
+
+    expect(test.ctx.goals.create(test.agent, { objective: 'inherits both' }))
+      .toMatchObject({ maxGoalTokens: 5_000, maxGoalWorkMs: 90_000 })
+
+    const under = stubAgent(`goal-under-${Math.random()}`, undefined, test.ctx)
+    test.ctx.agents.register(under.agent)
+    expect(test.ctx.goals.create(under.agent, { objective: 'under the ceiling', maxGoalTokens: 1_000 }))
+      .toMatchObject({ maxGoalTokens: 1_000 })
+
+    const atCeiling = stubAgent(`goal-at-${Math.random()}`, undefined, test.ctx)
+    test.ctx.agents.register(atCeiling.agent)
+    const created = test.ctx.goals.create(atCeiling.agent, { objective: 'ceiling reached', maxGoalTokens: 5_000 })
+    expect(() => test.ctx.goals.edit(atCeiling.agent, created, { maxGoalTokens: 5_001 }))
+      .toThrow(expect.objectContaining({ code: 'GOAL_BUDGET_EXCEEDS_LIMIT' }))
+    expect(() => test.ctx.goals.edit(atCeiling.agent, created, { maxGoalWorkMs: 90_001 }))
+      .toThrow(expect.objectContaining({ code: 'GOAL_BUDGET_EXCEEDS_LIMIT' }))
+    // A deployment that bounds a budget also refuses to leave it unbounded.
+    expect(() => test.ctx.goals.edit(atCeiling.agent, created, { maxGoalTokens: null }))
+      .toThrow(expect.objectContaining({ code: 'GOAL_BUDGET_EXCEEDS_LIMIT' }))
+    expect(test.ctx.goals.edit(atCeiling.agent, created, { maxGoalTokens: 4_999 }))
+      .toMatchObject({ maxGoalTokens: 4_999 })
+  })
+
+  it('rejects an over-ceiling budget on create too', async () => {
+    const { ctx, agent } = await meteredHarness({ maxGoalTokens: 5_000 })
+    expect(() => ctx.goals.create(agent, { objective: 'too big', maxGoalTokens: 5_001 }))
+      .toThrow(expect.objectContaining({ code: 'GOAL_BUDGET_EXCEEDS_LIMIT' }))
+    expect(() => ctx.goals.create(agent, { objective: 'unbounded', maxGoalTokens: null }))
+      .toThrow(expect.objectContaining({ code: 'GOAL_BUDGET_EXCEEDS_LIMIT' }))
+  })
+
+  it('rejects an unusable deployment ceiling', async () => {
+    expect(() => new GoalService(new Context(), { maxGoalTokens: 0 }))
+      .toThrow(expect.objectContaining({ code: 'GOAL_INVALID_BUDGET' }))
+    expect(() => new GoalService(new Context(), { maxGoalWorkMs: 1.5 }))
+      .toThrow(expect.objectContaining({ code: 'GOAL_INVALID_BUDGET' }))
   })
 })

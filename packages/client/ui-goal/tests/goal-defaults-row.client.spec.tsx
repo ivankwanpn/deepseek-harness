@@ -111,7 +111,7 @@ describe('GoalDefaultsRow', () => {
     fireEvent.change(input('Token budget'), { target: { value: '' } })
     expect(setLimit).not.toHaveBeenCalled()
     fireEvent.blur(input('Token budget'))
-    expect(clearLimit).toHaveBeenCalledWith('defaultMaxGoalTokens')
+    expect(clearLimit).toHaveBeenCalledWith('maxGoalTokens')
   })
 
   it('keeps the section it already adopted when an older revision arrives', () => {
