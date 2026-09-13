@@ -8,7 +8,7 @@
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+import type { BoundActions, HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the generated Remote API and ctx.remote merge through the Client assembly boundary.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: pulls the Session Controller service used for projected goal state.
@@ -23,13 +23,18 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the Session standard useProjection seat.
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+// Type-only: pulls `ctx.settingsScope` and the General-section item slot.
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: the `goal` SessionProjectionMap key merge (single source, the domain's pure outlet).
 import type { GoalProjection, GoalRef } from '@deepseek-ai/dsh-goal/client'
 import type { GoalActionResult, GoalBarInjected } from './slots.ts'
 import { createGoalActivationSource } from './activation-source.ts'
 import { GoalDock } from './GoalBar.tsx'
+import { GoalDefaultsRow } from './GoalDefaultsRow.tsx'
+import type { GoalDefaultsRowInjected, GoalLimitField } from './GoalDefaultsRow.tsx'
 import { GoalCommandInputView } from './GoalCommandInputView.tsx'
 import { goalCommandInputDefinition } from './goal-command-input.ts'
+import { createGoalDefaultsRowStore } from './goal-defaults-store.ts'
 import { en, zh, type GoalKey } from './locales.ts'
 
 export { GoalBar, GoalDock } from './GoalBar.tsx'
@@ -47,6 +52,20 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Dictionary namespace owned by this plugin. */
 const NS = 'goal'
+
+/**
+ * The `goal` settings namespace on the Host wire. `dsh-goal` registers it and
+ * resolves it over its composition entry; the literal is repeated here because
+ * the domain's Client face is a types-only outlet.
+ */
+const GOAL_SETTINGS_NS = 'goal'
+
+/** The deployment defaults `dsh-goal` resolves from that namespace. */
+interface GoalDefaults {
+  defaultMaxGoalRounds?: number
+  defaultMaxGoalTokens?: number
+  defaultMaxGoalWorkMs?: number
+}
 
 /** Required services for the Goal dock, command-input projection, Remote mutations, and copy. */
 export const inject = ['slots', 'sessions', 'remote', 'remote.goals', 'locale', 'uiConversation']
@@ -122,4 +141,48 @@ export function apply(ctx: ClientContext): void {
       }
     },
   }, GoalDock))
+
+  // The General-section row is optional twice over: it needs the settings
+  // transport, and its slot exists only while ui-settings-general's General
+  // section is mounted. A child injection keeps GoalBar independent of both.
+  ctx.inject(['settingsScope'], (settingsCtx) => {
+    const scope = settingsCtx.settingsScope.bind<GoalDefaults>({ namespace: GOAL_SETTINGS_NS })
+    const store = createGoalDefaultsRowStore()
+    let bound: BoundActions<typeof store> | undefined
+    const sync = (): void => {
+      const snapshot = scope.getSnapshot()
+      const value = snapshot.value
+      if (value === undefined || snapshot.revision === undefined) return
+      bound?.sync({
+        rounds: value.defaultMaxGoalRounds ?? null,
+        tokens: value.defaultMaxGoalTokens ?? null,
+        workMs: value.defaultMaxGoalWorkMs ?? null,
+      }, snapshot.revision)
+    }
+    settingsCtx.effect(() => scope.subscribe(sync), 'ui-goal: goal default sync')
+    settingsCtx.slots.inject('settings.general.item', () => settingsCtx.slots.register({
+      name: 'settings.general.item',
+      id: 'goal-defaults',
+      order: 13,
+      store,
+      locale: NS,
+      inject: (actions): GoalDefaultsRowInjected => {
+        bound = actions
+        // Re-sync from the snapshot so no committed change is lost between
+        // registration and the first render; the revision guard drops repeats.
+        sync()
+        const write = (run: Promise<void>): void => {
+          run.catch((error: unknown) => {
+            // The scope reloads Host state after a failed write, and the row
+            // re-renders from the persisted section; nothing else to report.
+            console.warn('ui-goal: goal default write failed', error)
+          })
+        }
+        return {
+          setLimit: (field: GoalLimitField, value: number) => { write(scope.set(field, value)) },
+          clearLimit: (field: GoalLimitField) => { write(scope.unset(field)) },
+        }
+      },
+    }, GoalDefaultsRow))
+  })
 }

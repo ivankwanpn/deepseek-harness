@@ -22,6 +22,7 @@ import { makeTranslate, RemoteError } from '@deepseek-ai/dsh-client-test-runtime
 import type { RemoteFailure } from '@deepseek-ai/dsh-api-remotes/client'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type { GoalActivationSnapshot, GoalBarActions, GoalBarInjected } from '../src/client/slots.ts'
+import type { GoalDefaultsRowInjected } from '../src/client/GoalDefaultsRow.tsx'
 import { apply, inject } from '../src/client/index.ts'
 import { GoalDock } from '../src/client/GoalBar.tsx'
 import { zh } from '../src/client/locales.ts'
@@ -54,6 +55,7 @@ async function bench(options: {
   projection?: GoalProjection | null | undefined
   activation?: GoalActivation
   failWith?: RemoteFailure
+  settings?: { defaultMaxGoalRounds?: number; defaultMaxGoalTokens?: number; defaultMaxGoalWorkMs?: number }
 } = {}) {
   const ctx = new Context()
   const calls: { method: string; args: unknown[] }[] = []
@@ -142,14 +144,45 @@ async function bench(options: {
     name: 'root', children: {
       'conversation.input.dock': { kind: 'list', scope: 'session' },
       'conversation.chat.node': { kind: 'keyed', scope: 'session' },
+      'settings.general.item': { kind: 'list', scope: 'root' },
     },
   } as never, (() => null) as never)
   ctx.provide('locale', new LocaleRuntime(ctx))
+  const settingsWrites: { field: string; value?: unknown }[] = []
+  const settingsListeners = new Set<() => void>()
+  const section = options.settings
+  ctx.provide('settingsScope', {
+    bind: () => ({
+      getSnapshot: () => ({
+        status: section === undefined ? 'unavailable' : 'ready',
+        value: section,
+        base: undefined,
+        user: undefined,
+        revision: 1,
+        writable: true,
+        mode: 'host',
+      }),
+      subscribe: (listener: () => void) => {
+        settingsListeners.add(listener)
+        return () => { settingsListeners.delete(listener) }
+      },
+      set: (field: string, value: unknown) => {
+        settingsWrites.push({ field, value })
+        return Promise.resolve()
+      },
+      unset: (field: string) => {
+        settingsWrites.push({ field })
+        return Promise.resolve()
+      },
+    }),
+  })
   const fiber = ctx.plugin({ inject: [...inject], apply })
   return {
     ctx,
     fiber,
     calls,
+    settingsWrites,
+    settingsListenerCount: () => settingsListeners.size,
     emitActivation: remote.emitActivation.bind(remote),
     definitions: () => conversationEvents.entries(),
     remountGoals: () => { activeGoals = goals('remounted-goals') },
@@ -164,6 +197,7 @@ async function bench(options: {
       }
     },
     chatEntry: () => ctx.slots.entries('conversation.chat.node')[0],
+    defaultsEntry: () => ctx.slots.entries('settings.general.item')[0],
   }
 }
 
@@ -276,6 +310,38 @@ describe('ui-goal browser plugin', () => {
     expect(b.entry()).toBeUndefined()
     expect(b.chatEntry()).toBeUndefined()
     expect(b.definitions()).toHaveLength(0)
+  })
+
+  it('registers the goal-limits row and routes its edits through the settings scope', async () => {
+    const b = await bench({ settings: { defaultMaxGoalRounds: 256 } })
+    await b.fiber.await()
+    const entry = b.defaultsEntry()
+    expect(entry?.options).toMatchObject({ id: 'goal-defaults', order: 13 })
+    expect(entry?.locale).toBe('goal')
+    expect(b.settingsListenerCount()).toBe(1)
+
+    const sync = vi.fn()
+    const injected = (entry?.inject as unknown as (
+      actions: { sync: typeof sync },
+    ) => GoalDefaultsRowInjected)({ sync })
+    // The section is adopted at registration so the first render is never empty.
+    expect(sync).toHaveBeenCalledWith({ rounds: 256, tokens: null, workMs: null }, 1)
+    injected.setLimit('defaultMaxGoalRounds', 40)
+    injected.clearLimit('defaultMaxGoalTokens')
+    expect(b.settingsWrites).toEqual([
+      { field: 'defaultMaxGoalRounds', value: 40 },
+      { field: 'defaultMaxGoalTokens' },
+    ])
+  })
+
+  it('withdraws the goal-limits row and its subscription with the plugin fiber', async () => {
+    const b = await bench({ settings: { defaultMaxGoalRounds: 256 } })
+    await b.fiber.await()
+    expect(b.defaultsEntry()).toBeDefined()
+    expect(b.settingsListenerCount()).toBe(1)
+    await b.fiber.dispose()
+    expect(b.defaultsEntry()).toBeUndefined()
+    expect(b.settingsListenerCount()).toBe(0)
   })
 })
 
