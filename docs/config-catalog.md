@@ -805,10 +805,14 @@ Requires: `agents` · `sessionProjections`
 export interface Config {
   /** Total rounds used when a create request omits its own cap. */
   defaultMaxGoalRounds?: number
+  /** Token ceiling used when a create request omits its own; absent leaves the goal unbounded. */
+  defaultMaxGoalTokens?: number
+  /** Active model-and-tool millisecond ceiling used when a create request omits its own. */
+  defaultMaxGoalWorkMs?: number
 }
 ```
 
-Source: [`packages/goal/goal/src/index.ts:172`](../packages/goal/goal/src/index.ts)
+Source: [`packages/goal/goal/src/index.ts:191`](../packages/goal/goal/src/index.ts)
 
 <a id="deepseek-aidsh-headless"></a>
 

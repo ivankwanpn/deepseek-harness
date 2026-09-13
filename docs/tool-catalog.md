@@ -1065,6 +1065,14 @@ Create one persisted same-session completion goal when the current direct human 
     "max_goal_rounds": {
       "type": "number",
       "description": "Optional positive safe-integer limit on automatic continuation rounds."
+    },
+    "max_goal_tokens": {
+      "type": "number",
+      "description": "Optional positive safe-integer ceiling on provider tokens spent under this goal. Omit it to inherit the deployment default."
+    },
+    "max_goal_work_ms": {
+      "type": "number",
+      "description": "Optional positive safe-integer ceiling, in milliseconds, on model-and-tool time spent under this goal. Omit it to inherit the deployment default."
     }
   },
   "required": [
@@ -1077,7 +1085,7 @@ Source: [`packages/goal/tool-goal/src/index.ts`](../packages/goal/tool-goal/src/
 
 ### `get_goal`
 
-Read the current same-session goal, including its exact id/revision, objective, phase, completed continuation rounds, round limit, blocker reason when present, and whether another continuation is armed. Call this before updating a goal.
+Read the current same-session goal, including its exact id/revision, objective, phase, completed continuation rounds, round limit, spent tokens and model-and-tool time against their budgets when set, blocker reason when present, and whether another continuation is armed. Call this before updating a goal.
 
 ```json
 {
@@ -1122,6 +1130,14 @@ Update the exact current goal revision. edit, pause, and resume require a direct
     "max_goal_rounds": {
       "type": "number",
       "description": "Replacement cap; valid only with action edit."
+    },
+    "max_goal_tokens": {
+      "type": "number",
+      "description": "Replacement token ceiling; valid only with action edit."
+    },
+    "max_goal_work_ms": {
+      "type": "number",
+      "description": "Replacement model-and-tool millisecond ceiling; valid only with action edit."
     },
     "blocked_reason": {
       "type": "string",

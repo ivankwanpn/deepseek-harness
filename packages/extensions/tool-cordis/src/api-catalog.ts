@@ -4024,7 +4024,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CreateGoalRequest',
-    declaration: 'export interface CreateGoalRequest {\n    readonly objective: string;\n    readonly maxGoalRounds?: number;\n}',
+    declaration: 'export interface CreateGoalRequest {\n    readonly objective: string;\n    readonly maxGoalRounds?: number;\n    readonly maxGoalTokens?: number | null;\n    readonly maxGoalWorkMs?: number | null;\n}',
   },
   {
     name: 'CreateGoalResult',
@@ -4184,7 +4184,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'EditGoalRequest',
-    declaration: 'export interface EditGoalRequest {\n    readonly objective?: string;\n    readonly maxGoalRounds?: number;\n}',
+    declaration: 'export interface EditGoalRequest {\n    readonly objective?: string;\n    readonly maxGoalRounds?: number;\n    readonly maxGoalTokens?: number | null;\n    readonly maxGoalWorkMs?: number | null;\n}',
   },
   {
     name: 'EncodedFileAttachment',
@@ -4315,6 +4315,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GoalBlockReason {\n    readonly code: string;\n    readonly message: string;\n}',
   },
   {
+    name: 'GoalBudgetKind',
+    declaration: 'export type GoalBudgetKind = \'tokens\' | \'work\';',
+  },
+  {
     name: 'GoalChanged',
     declaration: 'export interface GoalChanged {\n    readonly operation: GoalOperation;\n    readonly ref: GoalRef;\n    readonly goal?: GoalView;\n}',
   },
@@ -4336,11 +4340,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GoalSnapshot',
-    declaration: 'export interface GoalSnapshot extends GoalRef {\n    readonly objective: string;\n    readonly phase: GoalPhase;\n    readonly blockedReason?: GoalBlockReason;\n    readonly maxGoalRounds: number;\n}',
+    declaration: 'export interface GoalSnapshot extends GoalRef {\n    readonly objective: string;\n    readonly phase: GoalPhase;\n    readonly blockedReason?: GoalBlockReason;\n    readonly maxGoalRounds: number;\n    readonly maxGoalTokens: number | null;\n    readonly maxGoalWorkMs: number | null;\n}',
   },
   {
     name: 'GoalView',
-    declaration: 'export interface GoalView extends GoalSnapshot {\n    readonly roundsStarted: number;\n    readonly createdAt: number;\n    readonly updatedAt: number;\n    readonly activation: GoalActivation;\n}',
+    declaration: 'export interface GoalView extends GoalSnapshot {\n    readonly roundsStarted: number;\n    readonly tokensUsed: number | null;\n    readonly workMsUsed: number | null;\n    readonly exhaustedBudget: GoalBudgetKind | null;\n    readonly createdAt: number;\n    readonly updatedAt: number;\n    readonly activation: GoalActivation;\n}',
   },
   {
     name: 'GrantRecord',
