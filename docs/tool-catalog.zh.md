@@ -1071,6 +1071,14 @@ glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn �
     "max_goal_rounds": {
       "type": "number",
       "description": "Optional positive safe-integer limit on automatic continuation rounds."
+    },
+    "max_goal_tokens": {
+      "type": "number",
+      "description": "Optional positive safe-integer ceiling on provider tokens spent under this goal. Omit it to inherit the deployment default."
+    },
+    "max_goal_work_ms": {
+      "type": "number",
+      "description": "Optional positive safe-integer ceiling, in milliseconds, on model-and-tool time spent under this goal. Omit it to inherit the deployment default."
     }
   },
   "required": [
@@ -1083,7 +1091,7 @@ glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn �
 
 ### `get_goal`
 
-读取当前的同会话目标，包括确切的 id／revision、目标、阶段、已完成的延续 Round 数、Round 上限、存在时的阻塞原因，以及是否已准备下一次延续。更新目标前请先调用此工具。
+读取当前的同会话目标，包括确切的 id／revision、目标、阶段、已完成的延续 Round 数、Round 上限、在设置了预算时对照预算已花费的 token 与模型及工具时间、存在时的阻塞原因，以及是否已准备下一次延续。更新目标前请先调用此工具。
 
 ```json
 {
@@ -1128,6 +1136,14 @@ glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn �
     "max_goal_rounds": {
       "type": "number",
       "description": "Replacement cap; valid only with action edit."
+    },
+    "max_goal_tokens": {
+      "type": "number",
+      "description": "Replacement token ceiling; valid only with action edit."
+    },
+    "max_goal_work_ms": {
+      "type": "number",
+      "description": "Replacement model-and-tool millisecond ceiling; valid only with action edit."
     },
     "blocked_reason": {
       "type": "string",
