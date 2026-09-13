@@ -53,7 +53,7 @@ Codex 的 `ThreadGoal` 用两个资源预算取代轮次计数——一个 token
 
 `goal` 投影的宿主状态新增两个可选字段，其 `stateVersion` 从 6 移到 7，因此该键已持久化的投影缓存行会被重新折叠而不是复用。
 
-`dsh-goal` 现在读取两个它并不提供的投影。这些导入是纯类型的，两个包都已随 base 与 web-app bundle 发布，且两者都未挂载时无预算的目标行为完全相同。[`dsh-session-stats`](../../../../packages/session/session-stats/src/index.ts)还额外从包根重新导出其投影单元，这是它的 `SessionProjectionStateMap` 增强在仅导入包根的程序中加载所必需的——与 `dsh-token-meter` 已声明的模块边相同。
+`dsh-goal` 现在读取两个它并不提供的投影。这些导入是纯类型的，且两者都未挂载时无预算的目标行为完全相同。已发布的 bundle 对两个预算的计量能力不同：base bundle 挂载 `token-meter`，只有 web-app bundle 挂载 `session-stats`，因此无头部署可以为 token 设预算，但在挂载统计插件之前会被拒绝设置工作预算。[`dsh-session-stats`](../../../../packages/session/session-stats/src/index.ts)还额外从包根重新导出其投影单元，这是它的 `SessionProjectionStateMap` 增强在仅导入包根的程序中加载所必需的——与 `dsh-token-meter` 已声明的模块边相同。
 
 目标的花费是实时读数，不是持久状态。`tokensUsed` 与 `workMsUsed` 在每次读取时由当前投影重新计算，因此投影缓存重新折叠或会话恢复后报告的数字与日志所支持的一致。
 

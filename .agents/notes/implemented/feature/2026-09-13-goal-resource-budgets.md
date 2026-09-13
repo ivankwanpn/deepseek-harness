@@ -53,7 +53,7 @@ A budgeted goal now stops on work actually spent, so `maxGoalRounds` can be rais
 
 The `goal` projection's host state gains two optional fields and its `stateVersion` moves from 6 to 7, so persisted projection-cache rows for this key are refolded rather than reused.
 
-`dsh-goal` now reads two projections it does not provide. The imports are type-only, both packages already ship in the base and web-app bundles, and an unbudgeted goal behaves identically when neither is mounted. [`dsh-session-stats`](../../../../packages/session/session-stats/src/index.ts) additionally re-exports its projection unit from the package root, which its `SessionProjectionStateMap` augmentation needs in order to load in a program that imports only the root — the same module edge `dsh-token-meter` already declares.
+`dsh-goal` now reads two projections it does not provide. The imports are type-only, and an unbudgeted goal behaves identically when neither is mounted. The shipped bundles meter the two budgets differently: the base bundle mounts `token-meter`, and only the web-app bundle mounts `session-stats`, so a headless deployment can budget tokens and is refused a work budget until it mounts the statistics plugin. [`dsh-session-stats`](../../../../packages/session/session-stats/src/index.ts) additionally re-exports its projection unit from the package root, which its `SessionProjectionStateMap` augmentation needs in order to load in a program that imports only the root — the same module edge `dsh-token-meter` already declares.
 
 A goal's spend is a live reading, not durable state. `tokensUsed` and `workMsUsed` are recomputed from the current projections on every read, so a projection-cache refold or a resumed session reports the same figures the log supports.
 

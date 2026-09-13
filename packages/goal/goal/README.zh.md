@@ -49,7 +49,7 @@ goal 适合一个需要跨自动 Goal Round 持续的长期完成目标——例
 | `defaultMaxGoalTokens` | 无 | 当 create 请求省略上限时应用的提供方 token 上限 |
 | `defaultMaxGoalWorkMs` | 无 | 当 create 请求省略上限时应用的模型与工具活跃毫秒上限 |
 
-`defaultMaxGoalRounds` 必须是正的安全整数；指定了自身上限的 create 请求会覆盖它。两个预算默认值必须是正的安全整数，且任一留空都会让其管辖的每个 goal 保持无上限。指定预算要求已注册对应的记账投影——token 用 [`@deepseek-ai/dsh-token-meter`](../../llm/token-meter/README.zh.md)，活跃工作用 [`@deepseek-ai/dsh-session-stats`](../../session/session-stats/README.zh.md)——未注册时指定预算的 create 或 edit 会被拒绝。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-goal)是每个受支持字段的穷尽式真源。
+`defaultMaxGoalRounds` 必须是正的安全整数；指定了自身上限的 create 请求会覆盖它。两个预算默认值必须是正的安全整数，且任一留空都会让其管辖的每个 goal 保持无上限。指定预算要求已注册对应的记账投影——token 用 [`@deepseek-ai/dsh-token-meter`](../../llm/token-meter/README.zh.md)，活跃工作用 [`@deepseek-ai/dsh-session-stats`](../../session/session-stats/README.zh.md)——未注册时指定预算的 create 或 edit 会被拒绝。base bundle 挂载 `token-meter`，只有 `web-app` 挂载 `session-stats`，因此无头组合可以为 token 设预算，但要为活跃工作设预算必须先显式加入 `session-stats` 条目。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-goal)是每个受支持字段的穷尽式真源。
 
 ### 会话投影
 
