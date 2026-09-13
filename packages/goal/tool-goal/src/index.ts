@@ -45,7 +45,9 @@ const CREATE_DESCRIPTION =
   'Create one persisted same-session completion goal when the current direct human request '
   + 'is a long-running objective that should continue across autonomous goal rounds. You may '
   + 'infer that intent without requiring the user to say "create a goal". Do not use this for '
-  + 'trivial single-turn work. Execution rejects non-human and subagent authority.'
+  + 'trivial single-turn work. The deployment owns how many rounds and how much resource the '
+  + 'goal may spend; name a budget only when the human asks for one. Execution rejects '
+  + 'non-human and subagent authority.'
 
 const GET_DESCRIPTION =
   'Read the current same-session goal, including its exact id/revision, objective, phase, completed '
@@ -228,10 +230,6 @@ export function apply(ctx: Context, config: Config): void {
         required: true,
         description: 'The concrete completion objective inferred from the direct human request.',
       },
-      max_goal_rounds: {
-        type: 'number',
-        description: 'Optional positive safe-integer limit on automatic continuation rounds.',
-      },
       max_goal_tokens: {
         type: 'number',
         description: 'Optional positive safe-integer ceiling on provider tokens spent under this goal. '
@@ -249,7 +247,6 @@ export function apply(ctx: Context, config: Config): void {
       requireDirectHuman(ctx, execution)
       const goal = ctx.goals.create(execution.agent, {
         objective: args.objective,
-        ...hasPositive(args.max_goal_rounds) ? { maxGoalRounds: args.max_goal_rounds } : {},
         ...hasPositive(args.max_goal_tokens) ? { maxGoalTokens: args.max_goal_tokens } : {},
         ...hasPositive(args.max_goal_work_ms) ? { maxGoalWorkMs: args.max_goal_work_ms } : {},
       })

@@ -227,14 +227,25 @@ describe('goal tool execution authority', () => {
   it('lets a root model infer create intent from its accepted human turn', async () => {
     const { ctx, root } = await harness()
     openTurn(root, { kind: 'user' }, '请持续工作直到这个功能完成')
-    const result = await execute(ctx, 'create_goal', {
-      objective: 'Finish the feature', max_goal_rounds: 9,
-    }, root.agent)
+    const result = await execute(ctx, 'create_goal', { objective: 'Finish the feature' }, root.agent)
     expect(resultGoal(result)).toMatchObject({
-      objective: 'Finish the feature', revision: 1, phase: 'active', maxGoalRounds: 9,
+      objective: 'Finish the feature', revision: 1, phase: 'active', maxGoalRounds: 256,
     })
     expect(resultJson(result)['activation']).toBe('armed')
     expect(ctx.goals.get(root.agent)?.objective).toBe('Finish the feature')
+  })
+
+  it('does not let the model name the continuation round cap', async () => {
+    const { ctx, root } = await harness()
+    openTurn(root, { kind: 'user' }, 'long-running work')
+    // A model still sending the retired argument must not be able to cap
+    // continuation below the deployment's own limit: the round budget belongs
+    // to the deployment, and `update_goal` edit is the authorized path to it.
+    const result = await execute(ctx, 'create_goal', {
+      objective: 'Deployment owns the cap',
+      max_goal_rounds: 9,
+    }, root.agent)
+    expect(resultGoal(result)).toMatchObject({ maxGoalRounds: 256 })
   })
 
   it('carries budgets through create and edit and rejects them on other actions', async () => {
@@ -242,7 +253,6 @@ describe('goal tool execution authority', () => {
     openTurn(root, { kind: 'user' }, 'keep this inside a budget')
     const created = resultGoal(await execute(ctx, 'create_goal', {
       objective: 'Bounded work',
-      max_goal_rounds: 5,
       max_goal_tokens: 4000,
       max_goal_work_ms: 90_000,
     }, root.agent))
