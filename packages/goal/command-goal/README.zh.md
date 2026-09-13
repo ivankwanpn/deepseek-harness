@@ -126,7 +126,7 @@ kind: "package-reference"
 这些限制说明命令何时不合适或需要特别注意。它们是当前包约束，不是任务积压。
 
 - **仅纯文本交互**——通用命令注册表没有模态编辑表单或替换确认回调；内联 edit 与显式 clear 能在不同适配器中保持明确且一致的破坏性意图。
-- **没有逐命令 Round 上限参数**——`defaultMaxGoalRounds` 仍是部署配置；用户直接请求时，可以要求模型通过另行授权的 goal 工具编辑 `max_goal_rounds`。
+- **没有逐命令 Round 上限参数**——`/goal` 只承载目标文本与生命周期。上限是部署配置，可在运行时通过 [`goal` settings section](../goal/README.zh.md#runtime-defaults) 编辑；用户直接请求时，也可以要求模型通过另行授权的 goal 工具把某个上限应用到当前 goal。
 - **没有持续状态组件**——裸 `/goal` 是可移植的观察接口；不提供适配器专用徽标或重连后可恢复的命令输出。
 - **随附应用中只有 Web 命令适配器使用此命令**——无头、ACP 自动化和 JSON-RPC 适配器不消费 `ctx.commands`。如果组合中包含面向模型的 goal 工具，普通提示词仍能授权它们。
 
@@ -136,6 +136,6 @@ kind: "package-reference"
 <details>
 <summary>维护者的工作上下文——点击展开</summary>
 
-本开发备注是维护者的工作上下文，明确不具权威性。开放且未决：持续状态组件与逐命令 Round 上限输入；两者都是延后的 UI 与配置工作。
+本开发备注是维护者的工作上下文，明确不具权威性。开放且未决：持续状态组件，以及在 [`goal` settings section](../goal/README.zh.md#runtime-defaults) 已承载部署上限之后，逐命令的上限参数是否还值得存在。
 
 </details>
