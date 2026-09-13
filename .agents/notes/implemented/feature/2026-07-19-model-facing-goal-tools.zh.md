@@ -16,7 +16,7 @@ Status: implemented
 
 ### 工具与模型约定
 
-`get_goal()` 返回当前目标或 `null`。非空结果包含用于比较并交换的 id 与修订号、目标描述、持久阶段、已接纳和最大 Goal Round 数、可能存在的阻塞原因，以及进程本地激活态观察。`create_goal(objective, max_goal_rounds?)` 创建一个长时间运行的同会话目标。`update_goal(goal_id, revision, action, objective?, max_goal_rounds?, blocked_reason?)` 支持 `edit`、`pause`、`resume`、`complete` 和 `blocked`；替换字段仅对 `edit` 有效，非空的 `blocked_reason` 仅在 `blocked` 时必填，并以稳定代码 `model-reported` 持久化。持久 paused goal 会以 `GOAL_TOOL_RESUME_PAUSED` 拒绝 `resume`；面向用户的命令或 Web 控件拥有该转换。执行器把值恰好为空字符串的可选字段和值为 0 的 `max_goal_rounds` 视为严格 schema 占位值：这些值等同于省略；编辑时仍必须提供至少一个有实际意义的替换字段；所有非占位值仍受对应操作的限制。
+`get_goal()` 返回当前目标或 `null`。非空结果包含用于比较并交换的 id 与修订号、目标描述、持久阶段、已接纳和最大 Goal Round 数、可能存在的阻塞原因，以及进程本地激活态观察。它还会报告已配置的 token 或活跃工作上限、对照该上限的花费，以及哪一个上限已耗尽；目标没有该预算时这些字段一并省略（[资源预算](2026-09-13-goal-resource-budgets.zh.md)）。`create_goal(objective, max_goal_rounds?, max_goal_tokens?, max_goal_work_ms?)` 创建一个长时间运行的同会话目标。`update_goal(goal_id, revision, action, objective?, max_goal_rounds?, max_goal_tokens?, max_goal_work_ms?, blocked_reason?)` 支持 `edit`、`pause`、`resume`、`complete` 和 `blocked`；替换字段仅对 `edit` 有效，非空的 `blocked_reason` 仅在 `blocked` 时必填，并以稳定代码 `model-reported` 持久化。持久 paused goal 会以 `GOAL_TOOL_RESUME_PAUSED` 拒绝 `resume`；面向用户的命令或 Web 控件拥有该转换。执行器把值恰好为空字符串的可选字段和值为 0 的 `max_goal_rounds`、`max_goal_tokens` 或 `max_goal_work_ms` 视为严格 schema 占位值：这些值等同于省略；编辑时仍必须提供至少一个有实际意义的替换字段；所有非占位值仍受对应操作的限制。部署无法计量的上限会以 `GOAL_BUDGET_UNMETERED` 拒绝，且没有任何工具参数可以移除已有预算；领域层的显式 `null` 与 `/goal` 仍是清除路径。
 
 提示词告诉模型：它可以从任何措辞或语言的直接人类请求中推断目标意图，但不应把常规单轮工作转换为目标。更新前必须读取当前目标，并复制准确的 id 和修订号。对于恢复或 fork 后处于活跃但未激活状态的目标，人类在语义上要求继续即可成为执行 `resume` 的依据。提示词不会静态声明持久 paused 的边界；执行时以 `GOAL_TOOL_RESUME_PAUSED` 拒绝该尝试，面向用户的恢复路径拥有该转换。只有目标已经实现时才能标记完成，困难或不确定性本身不构成阻塞；阻塞报告必须说明具体条件。
 

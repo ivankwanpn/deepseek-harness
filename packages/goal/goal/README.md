@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-goal` lets one long-running completion objective persist across turns, session resume, fork, and process restarts. Users and agents can create, edit, pause, resume, complete, block, or clear it; compare-and-set updates reject stale views. A configurable round cap (256 by default) bounds automatic continuation, and blocked goals retain a stable policy code with a human-readable explanation. The package stores goal state but does not schedule work, and continuation permission remains process-local rather than durable. Choose it for one objective spanning many turns; skip it for routine single-turn work or parallel objectives.
+`dsh-goal` lets one long-running completion objective persist across turns, session resume, fork, and process restarts. Users and agents can create, edit, pause, resume, complete, block, or clear it; compare-and-set updates reject stale views. A configurable round cap (256 by default) bounds continuation, and optional token and active-work budgets stop it on work spent; blocked goals retain a stable policy code with a human-readable explanation. The package stores goal state but does not schedule work, and continuation permission remains process-local rather than durable. Choose it for one objective spanning many turns; skip it for routine single-turn work or parallel objectives.
 
 ## Table of Contents
 
@@ -33,23 +33,27 @@ A goal suits one long-running completion objective that should continue across a
 
 ### Set up the service
 
-Load the package with a composition entry; the only deployment choice is the default round cap applied to creates that do not name their own.
+Load the package with a composition entry; the deployment choices are the default round cap, token ceiling, and active-work ceiling applied to creates that do not name their own.
 
 ```yaml
 - name: '@deepseek-ai/dsh-goal'
   config:
     defaultMaxGoalRounds: 256
+    defaultMaxGoalTokens: 2000000
+    defaultMaxGoalWorkMs: 3600000
 ```
 
 | Field | Default | Meaning |
 |---|---|---|
 | `defaultMaxGoalRounds` | `256` | Round cap applied when a create request omits its own |
+| `defaultMaxGoalTokens` | none | Provider-token ceiling applied when a create request omits its own |
+| `defaultMaxGoalWorkMs` | none | Active model-and-tool millisecond ceiling applied when a create request omits its own |
 
-`defaultMaxGoalRounds` must be a positive safe integer; a create request that names its own cap overrides it. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-goal) is the exhaustive source for every accepted field.
+`defaultMaxGoalRounds` must be a positive safe integer; a create request that names its own cap overrides it. The two budget defaults must be positive safe integers, and leaving either unset keeps every goal it governs unbounded. Naming a budget requires the matching accounting projection to be registered — [`@deepseek-ai/dsh-token-meter`](../../llm/token-meter/README.md) for tokens and [`@deepseek-ai/dsh-session-stats`](../../session/session-stats/README.md) for active work — and a create or edit that names one without it is refused. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-goal) is the exhaustive source for every accepted field.
 
 ### Session projection
 
-`GoalService` requires `ctx.sessionProjections` ([`@deepseek-ai/dsh-session-projection`](../../session/session-projection/README.md)) and registers the `goal` projection unit at startup; a composition that omits the projection registry cannot activate `ctx.goals`. The unit's version 6 host state retains the latest valid current goal, every previously used goal id, and the first strict replay failure. Its client view exposes the current goal or `null` before the first create and after a clear tombstone. The key merges into both `SessionProjectionStateMap` and `SessionProjectionMap`; carriers serve the client value on the history tail page and the `session/projection` push frame.
+`GoalService` requires `ctx.sessionProjections` ([`@deepseek-ai/dsh-session-projection`](../../session/session-projection/README.md)) and registers the `goal` projection unit at startup; a composition that omits the projection registry cannot activate `ctx.goals`. The unit's version 7 host state retains the latest valid current goal, every previously used goal id, the first strict replay failure, and each current goal's create-time accounting baselines. Its client view exposes the current goal or `null` before the first create and after a clear tombstone. The key merges into both `SessionProjectionStateMap` and `SessionProjectionMap`; carriers serve the client value on the history tail page and the `session/projection` push frame.
 
 ### Drive the lifecycle
 
@@ -57,15 +61,19 @@ A goal moves through four durable phases — `active`, `paused`, `blocked`, `com
 
 | Operation | What it does |
 |---|---|
-| `create` | Starts an active goal with an objective and round cap |
-| `edit` | Changes the objective and/or round cap without changing the phase |
+| `create` | Starts an active goal with an objective, round cap, and optional budgets |
+| `edit` | Changes the objective, round cap, and/or budgets without changing the phase |
 | `pause` | Stops automatic continuation and keeps the state |
 | `resume` | Restarts continuation; also rearms an active goal after session resume or fork |
 | `complete` | Marks the goal achieved and stops continuation |
 | `block` | Records a stable blocker code and explanation |
 | `clear` | Removes the current goal; its history stays in the session log |
 
-Pause, completion, blocking, and clear all disarm continuation. Blocking is the one phase that keeps a policy-owned lower-kebab-case code and a free-form explanation, so provider limits, exhausted budgets, execution errors, and requests for human input share a single durable phase instead of multiplying lifecycle states. Resume accepts a stopped goal, or an active but disarmed one, only while the round cap has remaining capacity, and it clears any former blocker reason.
+Pause, completion, blocking, and clear all disarm continuation. Blocking is the one phase that keeps a policy-owned lower-kebab-case code and a free-form explanation, so provider limits, exhausted budgets, execution errors, and requests for human input share a single durable phase instead of multiplying lifecycle states. Resume accepts a stopped goal, or an active but disarmed one, only while the round cap and every configured budget retain capacity, and it clears any former blocker reason.
+
+### Budgets
+
+A goal may carry a token ceiling, an active-work ceiling, or both, alongside its round cap. `tokensUsed` and `workMsUsed` are live readings of the session's accounting since the goal was created, and whichever ceiling is reached first stops automatic continuation; the driver blocks the goal with code `budget-limit` and the message names the ceiling, the spend, and the field to raise. A goal created before budgets existed records its baseline the first time an edit gives it one, so a budget meters work admitted from that point rather than charging earlier work retroactively.
 
 ### What survives and what does not
 
@@ -73,12 +81,15 @@ Every accepted change is recorded durably in the session log — the only store 
 
 ### Observing a goal
 
-Consumers read the current goal with `ctx.goals.get(agent)` and receive a detached view: objective, phase, rounds started versus the cap, blocker reason when blocked, and whether continuation is armed. Mutations must carry the exact `{ id, revision }` from that view, so a consumer holding older state receives a clear stale-revision error instead of silently overwriting newer state:
+Consumers read the current goal with `ctx.goals.get(agent)` and receive a detached view: objective, phase, rounds started versus the cap, blocker reason when blocked, spent tokens and active work against their ceilings, and whether continuation is armed. Mutations must carry the exact `{ id, revision }` from that view, so a consumer holding older state receives a clear stale-revision error instead of silently overwriting newer state:
 
 ```text
 const view = ctx.goals.get(agent)      // undefined when no goal is current
 view.phase                             // 'active' | 'paused' | 'blocked' | 'complete'
 view.roundsStarted, view.maxGoalRounds // continuation progress
+view.maxGoalTokens, view.tokensUsed    // null when the goal carries no token ceiling or no recorded baseline
+view.maxGoalWorkMs, view.workMsUsed    // active model-and-tool milliseconds, same null rule
+view.exhaustedBudget                   // 'tokens' | 'work' | null
 view.activation                        // 'armed' | 'disarmed' — not persisted
 ```
 
@@ -94,8 +105,9 @@ This section explains how the service realizes the behavior above; the observabl
 
 ### Design
 
-- **Event-sourced state.** Every mutation appends a durable `goal/change` event (version 1) carrying the complete post-mutation snapshot; `clear` writes a revisioned tombstone. The session log is the only durable authority.
-- **Compare-and-set mutations.** `ctx.goals` accepts only the exact live `Agent` registered under its id. `get()` returns a detached `GoalView`; mutations take a `GoalRef { id, revision }` and reject stale refs. Creation resolves the deployment default internally before committing.
+- **Event-sourced state.** Every mutation appends a durable `goal/change` event (version 1) carrying the complete post-mutation snapshot; `clear` writes a revisioned tombstone. The session log is the only durable authority. The two budget ceilings are optional payload fields, and a record written before they existed reads as unbounded with no claimed usage figure rather than as a zero budget.
+- **Compare-and-set mutations.** `ctx.goals` accepts only the exact live `Agent` registered under its id. `get()` returns a detached `GoalView`; mutations take a `GoalRef { id, revision }` and reject stale refs. Creation resolves the deployment defaults internally before committing.
+- **Budgets read the accounting projections.** `tokensAtCreate` and `workMsAtCreate` record the session's cumulative totals at the create mutation, so the spend a budget compares is attributable to one goal even though `tokenUsage` and `sessionStats` accumulate over the complete log. `tokensUsed` and `workMsUsed` are derived on every read, never persisted.
 - **Activation is process-local.** `armed` and `disarmed` live in a per-session cache and are never persisted. A fresh cache and every `agent/session-start` edge disarm continuation even when replay finds an active durable phase; `disarm()` removes authority without writing a revision or emitting a mutation.
 - **Strict replay.** The fold derives lifecycle mutations only from `goal/change` and rejects malformed shapes, discontinuous revisions, illegal phase transitions, non-monotonic per-goal timestamps, and non-sequential admitted rounds. Positive rounds advance only on admitted goal-sourced `user/message` events, and mutation timestamps clamp against the preceding update when wall time moves backward.
 - **Projection unit.** The package requires the projection registry and registers a strict `goal` unit. Its host state retains replay validation data and the first failure, while its client view exposes the latest valid whole goal or `null`; `GoalService` rejects access after a retained replay failure.
@@ -156,7 +168,7 @@ There is no KV-cache effect until another component exposes goal state in model-
 These limits define when the goal service is a poor fit or needs special care. They are current package constraints, not a task backlog.
 
 - **State, not scheduling** — this package does not decide when an armed goal continues, retry abnormal failures, or cancel an active turn; those policies belong to consumer packages such as `dsh-goal-round-driver`.
-- **Round-count budget only** — `maxGoalRounds` does not meter tokens, currency, wall time, or provider quotas.
+- **Budgets need their meters** — a goal budgets provider tokens and active model-and-tool time. Currency, provider quota, per-round price, and wall-clock ceilings are absent, and a deployment that mounts neither accounting projection cannot create a budgeted goal at all.
 - **No independent evaluator** — the caller that records completion or blocking is authoritative; evaluator-backed certification is deferred to a separate policy layer.
 - **One current goal** — parallel objectives and a separate goal database are intentionally absent; history remains available in the session log after replacement or clear.
 - **Trusted in-process producers** — a plugin with direct `Session` access can append counterfeit `goal/change` data. Strict replay detects malformed or inconsistent records and leaves goal access failed at that record until the log is repaired; this is integrity detection, not plugin isolation.

@@ -54,7 +54,7 @@ This separation makes session restoration observable and unsurprising. Reopening
 
 Forked sessions inherit the durable goal prefix because that is the natural replay result. The fork starts disarmed, so inheritance does not imply execution authority and no synthetic goal cancellation is inserted into history.
 
-`defaultMaxGoalRounds` is configurable and defaults to `256`. The cap counts only admitted goal rounds. `blockedAfterConsecutiveRounds` is separately configurable in the model-tool policy and defaults to `3`; it is a mechanical lower bound before an autonomous round may report a repeated blocker, not an evaluator of semantic sameness.
+`defaultMaxGoalRounds` is configurable and defaults to `256`. The cap counts only admitted goal rounds. `defaultMaxGoalTokens` and `defaultMaxGoalWorkMs` are separately configurable, default to no ceiling, and are metered per goal against baselines recorded at creation ([resource budgets](2026-09-13-goal-resource-budgets.md)). `blockedAfterConsecutiveRounds` is separately configurable in the model-tool policy and defaults to `3`; it is a mechanical lower bound before an autonomous round may report a repeated blocker, not an evaluator of semantic sameness.
 
 ### Same-session continuation
 
@@ -62,7 +62,7 @@ The goal-round driver owns at most one pending reservation per exact live agent.
 
 Only an admitted positive-round goal-sourced `user/message` charges a round. A stale reservation closes a blocked no-step turn without consuming the cap. A concurrent goal revision wins over settlement from an older round.
 
-Normal turn completion schedules another round only while the goal remains active, armed, and below its cap. Cancellation pauses. Rate limiting or quota exhaustion blocks with code `usage-limited`; cap exhaustion blocks with `round-limit`; queue failure uses `queue-failed`; turn errors, max-token stops, policy rejection, and unknown terminal results use their corresponding blocker codes. An independently composed request-recovery plugin may retry transient provider failures within that same turn; the goal driver never invents another round after an abnormal terminal outcome. A human can later resume through `/goal resume` or the Web control; a blocked goal also remains eligible for model `update_goal resume`, while a durable paused goal does not.
+Normal turn completion schedules another round only while the goal remains active, armed, and below its cap. Cancellation pauses. Rate limiting or quota exhaustion blocks with code `usage-limited`; cap exhaustion blocks with `round-limit`; a spent token or active-work budget blocks with `budget-limit`; queue failure uses `queue-failed`; turn errors, max-token stops, policy rejection, and unknown terminal results use their corresponding blocker codes. An independently composed request-recovery plugin may retry transient provider failures within that same turn; the goal driver never invents another round after an abnormal terminal outcome. A human can later resume through `/goal resume` or the Web control; a blocked goal also remains eligible for model `update_goal resume`, while a durable paused goal does not.
 
 ### Human and model interactions
 
@@ -119,7 +119,7 @@ The six owning Agent Notes record unit, integration, process, snapshot, cancella
 ## Known limitations and deferred work
 
 - **Independent evaluation** — same-session completion/blocking and Ralph terminal status are model or worker declarations. A separate evaluator, evaluator-driven feedback round, completion certificate, deterministic checker, adversarial verifier, and criteria/executor/isolation contract remain deferred.
-- **Aggregate budgets** — `maxGoalRounds` and Ralph `maxRounds` are the only aggregate effort limits. Token, currency, elapsed-time, provider-usage, and per-round price admission policies are absent.
+- **Aggregate budgets** — `maxGoalRounds` and Ralph `maxRounds` bound admitted cycles, and a goal's token and active-work budgets bound its spend. Ralph and the subagent drivers meter neither, and currency, provider-quota, and per-round price admission policies are absent.
 - **No persistent autonomous runner** — same-session goal facts persist, but activation and scheduling are process-local and deliberately wait for human input after restore. Ralph runs are foreground and cannot resume after process loss. Background collection, restart recovery, and unattended resident execution are deferred.
 - **No time scheduler** — interval `/loop`, cron, proactive maintenance, and cloud or desktop scheduling are outside this decision.
 - **No generic loop journal or execution-world rewind** — session replay reconstructs goal history, not prior files, processes, environment, credentials, or external side effects. Ralph treats the current workspace as authority and carries no cross-run journal.
