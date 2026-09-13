@@ -40,6 +40,8 @@ function makeProjection(revision = 3): GoalProjection {
       objective: 'Ship it',
       phase: 'active',
       maxGoalRounds: 8,
+      maxGoalTokens: null,
+      maxGoalWorkMs: null,
     },
     roundsStarted: 1,
     createdAt: 10,
@@ -84,6 +86,9 @@ async function bench(options: {
     return {
       ...options.projection.goal,
       roundsStarted: options.projection.roundsStarted,
+      tokensUsed: null,
+      workMsUsed: null,
+      exhaustedBudget: null,
       createdAt: options.projection.createdAt,
       updatedAt: options.projection.updatedAt,
       activation: options.activation ?? 'armed',

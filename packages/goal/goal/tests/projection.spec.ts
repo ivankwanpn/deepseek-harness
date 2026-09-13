@@ -147,7 +147,15 @@ describe('goal projection unit', () => {
     })
     const user = { type: 'user/message', seq: 0, time: 1, data: plainUser } as never
     const current: GoalProjection = {
-      goal: { id: GoalId('g1'), revision: 1, objective: 'x', phase: 'active', maxGoalRounds: 4 },
+      goal: {
+        id: GoalId('g1'),
+        revision: 1,
+        objective: 'x',
+        phase: 'active',
+        maxGoalRounds: 4,
+        maxGoalTokens: null,
+        maxGoalWorkMs: null,
+      },
       roundsStarted: 0,
       createdAt: 1,
       updatedAt: 1,
@@ -166,6 +174,14 @@ describe('goal projection unit', () => {
     expect(goalProjectionDefinition.stateSchema.safeParse({
       ...state,
       current: { ...current, roundsStarted: current.goal.maxGoalRounds + 1 },
+    }).success).toBe(false)
+    expect(goalProjectionDefinition.stateSchema.safeParse({
+      ...state,
+      current: { ...current, goal: { ...current.goal, maxGoalTokens: 10 } },
+    }).success).toBe(false)
+    expect(goalProjectionDefinition.stateSchema.safeParse({
+      ...state,
+      current: { ...current, goal: { ...current.goal, maxGoalWorkMs: 10 } },
     }).success).toBe(false)
     const empty = goalProjectionDefinition.init()
     expect(goalProjectionDefinition.stateSchema.parse(empty)).toEqual(empty)
@@ -191,8 +207,8 @@ describe('goal projection unit', () => {
       type: 'goal/change', seq: 1, time: 2,
       data: { kind: 'goal/change', version: 1, operation: 'create' },
     } as never
-    expect(applyGoalProjection(state, malformed).failure).toMatch(/goal snapshot change must have exactly/)
-    expect(applyGoalProjection(empty, malformed).failure).toMatch(/goal snapshot change must have exactly/)
+    expect(applyGoalProjection(state, malformed).failure).toMatch(/goal snapshot change is missing the createdAt field/)
+    expect(applyGoalProjection(empty, malformed).failure).toMatch(/goal snapshot change is missing the createdAt field/)
 
     const queuedRound = {
       type: 'agent/inbox/spliced', seq: 3, time: 4,

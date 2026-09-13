@@ -7,6 +7,8 @@ import CommandRuntime from '@deepseek-ai/dsh-commands'
 import GoalService from '@deepseek-ai/dsh-goal'
 import type { GoalRef } from '@deepseek-ai/dsh-goal'
 import SessionStore, { Session, SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
+import * as SessionStats from '@deepseek-ai/dsh-session-stats'
+import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import * as commandGoal from '@deepseek-ai/dsh-command-goal'
 import { createInboxStub } from '@deepseek-ai/dsh-agent-loop-testkit'
@@ -49,6 +51,8 @@ async function harness(): Promise<Harness> {
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(CommandRuntime)
   await ctx.plugin(AgentRegistry)
+  await ctx.plugin(SessionStats)
+  await ctx.plugin(TokenMeter)
   await ctx.plugin(GoalService)
   const plugin = await ctx.plugin(commandGoal)
   const { agent, session } = stubAgent(ctx, `command-goal-${Math.random()}`)
@@ -229,6 +233,32 @@ describe('/goal human command', () => {
     const complete = await run(test)
     expect(complete.text).toContain('Status: complete')
     expect(complete.text).toContain('Commands: /goal <objective>, /goal clear')
+  })
+
+  it('reports the spend against each configured budget', async () => {
+    const test = await harness()
+    test.ctx.goals.create(test.agent, {
+      objective: 'budgeted work',
+      maxGoalRounds: 4,
+      maxGoalTokens: 5000,
+      maxGoalWorkMs: 60_000,
+    })
+
+    const shown = await run(test)
+
+    expect(shown.text).toContain('Rounds: 0/4\nTokens: 0/5000\nActive work: 0/60000 ms\nActivation: armed')
+  })
+
+  it('reports an unmeasured spend as unknown when a budget outlives its meter', async () => {
+    const test = await harness()
+    const budgeted = test.ctx.goals.create(test.agent, {
+      objective: 'unmetered later',
+      maxGoalTokens: 5000,
+      maxGoalWorkMs: 60_000,
+    })
+    vi.spyOn(test.ctx.goals, 'get').mockReturnValue({ ...budgeted, tokensUsed: null, workMsUsed: null })
+
+    expect((await run(test)).text).toContain('Tokens: unknown/5000\nActive work: unknown/60000 ms')
   })
 
   it('does not turn unexpected implementation failures into expected command results', async () => {

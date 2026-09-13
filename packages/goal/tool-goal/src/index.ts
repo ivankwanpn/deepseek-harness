@@ -49,7 +49,8 @@ const CREATE_DESCRIPTION =
 
 const GET_DESCRIPTION =
   'Read the current same-session goal, including its exact id/revision, objective, phase, completed '
-  + 'continuation rounds, round limit, blocker reason when present, and whether another continuation is armed. '
+  + 'continuation rounds, round limit, spent tokens and model-and-tool time against their budgets when set, '
+  + 'blocker reason when present, and whether another continuation is armed. '
   + 'Call this before updating a goal.'
 
 /** Canonical goal-tool output, matching the existing compact Native JSON. */
@@ -63,6 +64,11 @@ type GoalToolValue =
       phase: GoalView['phase']
       roundsStarted: number
       maxGoalRounds: number
+      maxGoalTokens?: number
+      maxGoalWorkMs?: number
+      tokensUsed?: number
+      workMsUsed?: number
+      budgetExhausted?: 'tokens' | 'work'
       blockedReason?: { code: string; message: string }
     }
     activation: GoalView['activation']
@@ -92,6 +98,11 @@ const GOAL_VALUE_SCHEMA = {
             phase: { type: 'string', required: true, enum: ['active', 'paused', 'blocked', 'complete'] },
             roundsStarted: { type: 'integer', required: true },
             maxGoalRounds: { type: 'integer', required: true },
+            maxGoalTokens: { type: 'integer' },
+            maxGoalWorkMs: { type: 'integer' },
+            tokensUsed: { type: 'integer' },
+            workMsUsed: { type: 'integer' },
+            budgetExhausted: { type: 'string', enum: ['tokens', 'work'] },
             blockedReason: {
               type: 'object',
               additionalProperties: false,
@@ -135,8 +146,8 @@ function hasText(value: string | undefined): value is string {
   return value !== undefined && value !== ''
 }
 
-/** Whether an optional round cap is meaningful rather than a strict-schema zero filler. */
-function hasRoundCap(value: number | undefined): value is number {
+/** Whether an optional positive count is meaningful rather than a strict-schema zero filler. */
+function hasPositive(value: number | undefined): value is number {
   return value !== undefined && value !== 0
 }
 
@@ -163,6 +174,11 @@ function goalValue(goal: GoalView | undefined): GoalToolValue {
       phase: goal.phase,
       roundsStarted: goal.roundsStarted,
       maxGoalRounds: goal.maxGoalRounds,
+      ...goal.maxGoalTokens === null ? {} : { maxGoalTokens: goal.maxGoalTokens },
+      ...goal.maxGoalWorkMs === null ? {} : { maxGoalWorkMs: goal.maxGoalWorkMs },
+      ...goal.tokensUsed === null ? {} : { tokensUsed: goal.tokensUsed },
+      ...goal.workMsUsed === null ? {} : { workMsUsed: goal.workMsUsed },
+      ...goal.exhaustedBudget === null ? {} : { budgetExhausted: goal.exhaustedBudget },
       ...goal.blockedReason === undefined ? {} : {
         blockedReason: { code: goal.blockedReason.code, message: goal.blockedReason.message },
       },
@@ -216,6 +232,16 @@ export function apply(ctx: Context, config: Config): void {
         type: 'number',
         description: 'Optional positive safe-integer limit on automatic continuation rounds.',
       },
+      max_goal_tokens: {
+        type: 'number',
+        description: 'Optional positive safe-integer ceiling on provider tokens spent under this goal. '
+          + 'Omit it to inherit the deployment default.',
+      },
+      max_goal_work_ms: {
+        type: 'number',
+        description: 'Optional positive safe-integer ceiling, in milliseconds, on model-and-tool time '
+          + 'spent under this goal. Omit it to inherit the deployment default.',
+      },
     },
     output: GOAL_OUTPUT,
     execute(args, exec) {
@@ -223,7 +249,9 @@ export function apply(ctx: Context, config: Config): void {
       requireDirectHuman(ctx, execution)
       const goal = ctx.goals.create(execution.agent, {
         objective: args.objective,
-        ...args.max_goal_rounds === undefined ? {} : { maxGoalRounds: args.max_goal_rounds },
+        ...hasPositive(args.max_goal_rounds) ? { maxGoalRounds: args.max_goal_rounds } : {},
+        ...hasPositive(args.max_goal_tokens) ? { maxGoalTokens: args.max_goal_tokens } : {},
+        ...hasPositive(args.max_goal_work_ms) ? { maxGoalWorkMs: args.max_goal_work_ms } : {},
       })
       return Promise.resolve(goalValue(goal))
     },
@@ -247,6 +275,14 @@ export function apply(ctx: Context, config: Config): void {
       },
       objective: { type: 'string', description: 'Replacement objective; valid only with action edit.' },
       max_goal_rounds: { type: 'number', description: 'Replacement cap; valid only with action edit.' },
+      max_goal_tokens: {
+        type: 'number',
+        description: 'Replacement token ceiling; valid only with action edit.',
+      },
+      max_goal_work_ms: {
+        type: 'number',
+        description: 'Replacement model-and-tool millisecond ceiling; valid only with action edit.',
+      },
       blocked_reason: {
         type: 'string',
         description: 'Concrete blocking condition; required only with action blocked.',
@@ -258,7 +294,9 @@ export function apply(ctx: Context, config: Config): void {
       const ref = goalRef(args.goal_id, args.revision)
       const replacements = {
         ...hasText(args.objective) ? { objective: args.objective } : {},
-        ...hasRoundCap(args.max_goal_rounds) ? { maxGoalRounds: args.max_goal_rounds } : {},
+        ...hasPositive(args.max_goal_rounds) ? { maxGoalRounds: args.max_goal_rounds } : {},
+        ...hasPositive(args.max_goal_tokens) ? { maxGoalTokens: args.max_goal_tokens } : {},
+        ...hasPositive(args.max_goal_work_ms) ? { maxGoalWorkMs: args.max_goal_work_ms } : {},
       }
       if (args.action === 'edit') {
         requireDirectHuman(ctx, execution)
@@ -270,9 +308,12 @@ export function apply(ctx: Context, config: Config): void {
       }
       if (args.action === 'pause' || args.action === 'resume') {
         requireDirectHuman(ctx, execution)
-        if (hasText(args.objective) || hasRoundCap(args.max_goal_rounds) || hasText(args.blocked_reason)) {
+        if (hasText(args.objective) || hasPositive(args.max_goal_rounds)
+          || hasPositive(args.max_goal_tokens) || hasPositive(args.max_goal_work_ms)
+          || hasText(args.blocked_reason)) {
           throw new HarnessError(
-            'objective and max_goal_rounds are valid only with action edit; blocked_reason is valid only with action blocked',
+            'objective, max_goal_rounds, max_goal_tokens, and max_goal_work_ms are valid only with action edit; '
+            + 'blocked_reason is valid only with action blocked',
             'GOAL_TOOL_INVALID_UPDATE',
           )
         }
@@ -290,9 +331,10 @@ export function apply(ctx: Context, config: Config): void {
         return Promise.resolve(goalValue(goal))
       }
       const authority = completionAuthority(ctx, execution)
-      if (hasText(args.objective) || hasRoundCap(args.max_goal_rounds)) {
+      if (hasText(args.objective) || hasPositive(args.max_goal_rounds)
+        || hasPositive(args.max_goal_tokens) || hasPositive(args.max_goal_work_ms)) {
         throw new HarnessError(
-          'objective and max_goal_rounds are valid only with action edit',
+          'objective, max_goal_rounds, max_goal_tokens, and max_goal_work_ms are valid only with action edit',
           'GOAL_TOOL_INVALID_UPDATE',
         )
       }
@@ -339,7 +381,7 @@ export function apply(ctx: Context, config: Config): void {
         ? args.blocked_reason
         : hasText(args.objective)
           ? args.objective
-          : hasRoundCap(args.max_goal_rounds) ? args.max_goal_rounds : args.goal_id,
+          : hasPositive(args.max_goal_rounds) ? args.max_goal_rounds : args.goal_id,
     ),
   }))
 }

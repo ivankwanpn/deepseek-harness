@@ -27,6 +27,14 @@ export interface GoalSnapshotChangeMeta {
   readonly operation: Exclude<GoalOperation, 'clear'>
   readonly goal: GoalSnapshot
   readonly roundsStarted: number
+  /**
+   * Cumulative session token total at the create mutation, retained unchanged
+   * by every later mutation. Absent exactly on goals created before budgets
+   * existed; a change that names a token budget must carry it.
+   */
+  readonly tokensAtCreate?: number
+  /** Cumulative session active model-and-tool milliseconds at the create mutation. */
+  readonly workMsAtCreate?: number
   readonly createdAt: number
   readonly updatedAt: number
 }
@@ -50,6 +58,15 @@ export interface GoalMessageSource {
   readonly revision: number
   /** Positive admitted continuation round. */
   readonly round: number
+  /**
+   * Provider tokens spent under this goal when the round was admitted, absent
+   * when the deployment meters no tokens. Recorded because the round prompt
+   * shows this figure and an invariant re-renders that prompt from the log
+   * alone, so every model-visible number must survive replay.
+   */
+  readonly tokensUsed?: number
+  /** Active model-and-tool milliseconds spent under this goal when the round was admitted. */
+  readonly workMsUsed?: number
 }
 
 declare module '@deepseek-ai/dsh-llm' {
@@ -73,6 +90,10 @@ export interface FoldedGoal {
   readonly goal?: GoalSnapshot
   /** Highest admitted round for the current goal. */
   readonly roundsStarted: number
+  /** Token baseline recorded at creation, absent without a current goal or a recorded baseline. */
+  readonly tokensAtCreate?: number
+  /** Active-work baseline recorded at creation, absent without a current goal or a recorded baseline. */
+  readonly workMsAtCreate?: number
   /** Current goal creation time, absent without a current goal. */
   readonly createdAt?: number
   /** Current goal mutation time, absent without a current goal. */
@@ -97,6 +118,8 @@ export type GoalErrorCode =
   | 'GOAL_STALE_REVISION'
   | 'GOAL_INVALID_OBJECTIVE'
   | 'GOAL_INVALID_MAX_ROUNDS'
+  | 'GOAL_INVALID_BUDGET'
+  | 'GOAL_BUDGET_UNMETERED'
   | 'GOAL_INVALID_BLOCK_REASON'
   | 'GOAL_INVALID_EDIT'
   | 'GOAL_INVALID_TRANSITION'

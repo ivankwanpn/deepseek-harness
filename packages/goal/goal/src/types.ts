@@ -24,10 +24,17 @@ export interface GoalRef {
   readonly revision: number
 }
 
-/** Input whose omitted round cap is resolved by the service configuration. */
+/** Resource budget whose exhaustion stops automatic continuation for one goal. */
+export type GoalBudgetKind = 'tokens' | 'work'
+
+/** Input whose omitted caps are resolved by the service configuration. */
 export interface CreateGoalRequest {
   readonly objective: string
   readonly maxGoalRounds?: number
+  /** Token ceiling for this goal; omitted resolves the deployment default, `null` leaves it unbounded. */
+  readonly maxGoalTokens?: number | null
+  /** Active model-and-tool millisecond ceiling for this goal; omitted resolves the deployment default. */
+  readonly maxGoalWorkMs?: number | null
 }
 
 /** Wire-safe acknowledgement of one created goal. */
@@ -39,6 +46,10 @@ export interface CreateGoalResult {
 export interface EditGoalRequest {
   readonly objective?: string
   readonly maxGoalRounds?: number
+  /** Replacement token ceiling, or `null` to remove it. */
+  readonly maxGoalTokens?: number | null
+  /** Replacement active-work millisecond ceiling, or `null` to remove it. */
+  readonly maxGoalWorkMs?: number | null
 }
 
 /** Durable continuation phase. Activation is process-local and separate. */
@@ -66,6 +77,10 @@ export interface GoalSnapshot extends GoalRef {
   readonly blockedReason?: GoalBlockReason
   /** Total admitted goal-round cap. */
   readonly maxGoalRounds: number
+  /** Provider-token ceiling admitted under this goal, or null while unbounded. */
+  readonly maxGoalTokens: number | null
+  /** Active model-and-tool millisecond ceiling admitted under this goal, or null while unbounded. */
+  readonly maxGoalWorkMs: number | null
 }
 
 /** Whether this live process may automatically continue an active goal. */
@@ -90,6 +105,12 @@ export interface GoalActivationChanged {
 export interface GoalView extends GoalSnapshot {
   /** Highest admitted round number for this goal. */
   readonly roundsStarted: number
+  /** Provider tokens spent since this goal was created, or null when no baseline was recorded. */
+  readonly tokensUsed: number | null
+  /** Active model-and-tool milliseconds spent since this goal was created, or null when no baseline was recorded. */
+  readonly workMsUsed: number | null
+  /** First budget without remaining capacity in {@link GoalBudgetKind} order, or null while both retain it. */
+  readonly exhaustedBudget: GoalBudgetKind | null
   /** Epoch milliseconds of the create mutation. */
   readonly createdAt: number
   /** Epoch milliseconds of the latest mutation. */
@@ -109,6 +130,15 @@ export interface GoalProjection {
   readonly goal: GoalSnapshot
   /** Highest admitted round number for this goal. */
   readonly roundsStarted: number
+  /**
+   * Cumulative session token total recorded when this goal was created. The
+   * matching durable change carries it so a budget compares against the same
+   * accounting source after replay, fork, or restart. Absent on records
+   * written before budgets existed, where no usage figure is claimed.
+   */
+  readonly tokensAtCreate?: number
+  /** Cumulative session active model-and-tool milliseconds recorded when this goal was created. */
+  readonly workMsAtCreate?: number
   /** Epoch milliseconds of the create mutation. */
   readonly createdAt: number
   /** Epoch milliseconds of the latest mutation. */

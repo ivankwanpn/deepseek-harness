@@ -13,6 +13,10 @@ import type { Context } from '@deepseek-ai/cordis'
 import { sessionStatsProjectionDefinition } from './projection.ts'
 
 export type * from './types.ts'
+// Module-edge re-export: forces the emitted index.d.ts to reference the
+// projection-unit module, so its SessionProjectionStateMap augmentation loads
+// in aggregate programs that import only the package root.
+export type * from './projection.ts'
 
 /** Cordis plugin name. */
 export const name = 'session-stats'

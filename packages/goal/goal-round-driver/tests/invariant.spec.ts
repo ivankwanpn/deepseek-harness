@@ -21,6 +21,8 @@ const change: GoalSnapshotChangeMeta = {
     objective: 'verify every continuation prompt',
     phase: 'active',
     maxGoalRounds: 2,
+    maxGoalTokens: null,
+    maxGoalWorkMs: null,
   },
   roundsStarted: 0,
   createdAt: 1,
@@ -28,7 +30,16 @@ const change: GoalSnapshotChangeMeta = {
 }
 
 function view(roundsStarted: number): GoalView {
-  return { ...change.goal, roundsStarted, createdAt: 1, updatedAt: 1, activation: 'armed' }
+  return {
+    ...change.goal,
+    roundsStarted,
+    tokensUsed: null,
+    workMsUsed: null,
+    exhaustedBudget: null,
+    createdAt: 1,
+    updatedAt: 1,
+    activation: 'armed',
+  }
 }
 
 function appendChange(session: Session): void {

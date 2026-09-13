@@ -74,6 +74,22 @@ function commandHint(goal: GoalView): string {
   }
 }
 
+/**
+ * Render the human-facing budget lines for one goal.
+ * @param goal - current view.
+ * @returns no line without a budget, otherwise one line per configured ceiling.
+ */
+function budgetLines(goal: GoalView): string[] {
+  const lines: string[] = []
+  if (goal.maxGoalTokens !== null) {
+    lines.push(`Tokens: ${goal.tokensUsed ?? 'unknown'}/${goal.maxGoalTokens}`)
+  }
+  if (goal.maxGoalWorkMs !== null) {
+    lines.push(`Active work: ${goal.workMsUsed ?? 'unknown'}/${goal.maxGoalWorkMs} ms`)
+  }
+  return lines
+}
+
 /** Render direct UI output without exposing compare-and-set internals. */
 function renderGoal(title: string, goal: GoalView): CommandResult {
   const reason = goal.phase === 'blocked' ? goal.blockedReason : undefined
@@ -88,6 +104,7 @@ function renderGoal(title: string, goal: GoalView): CommandResult {
       ...blocker,
       `Objective: ${goal.objective}`,
       `Rounds: ${goal.roundsStarted}/${goal.maxGoalRounds}`,
+      ...budgetLines(goal),
       `Activation: ${goal.activation}`,
       '',
       `Commands: ${commandHint(goal)}`,

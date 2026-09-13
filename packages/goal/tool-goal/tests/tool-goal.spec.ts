@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import AgentRegistry, { agentEvents } from '@deepseek-ai/dsh-agent'
@@ -15,6 +15,8 @@ import SessionStore, {
   SessionLogOffset,
 } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import * as SessionStats from '@deepseek-ai/dsh-session-stats'
+import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
@@ -98,6 +100,8 @@ async function harness(config: toolGoal.Config = {}) {
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(ToolRuntime)
   ctx.sessionProjections.register(turnBoundaryProjectionDefinition)
+  await ctx.plugin(SessionStats)
+  await ctx.plugin(TokenMeter)
   await ctx.plugin(GoalService)
   const fiber = await ctx.plugin(toolGoal, config)
   const root = stubAgent(`goal-tool-root-${Math.random()}`, undefined, ctx)
@@ -231,6 +235,54 @@ describe('goal tool execution authority', () => {
     })
     expect(resultJson(result)['activation']).toBe('armed')
     expect(ctx.goals.get(root.agent)?.objective).toBe('Finish the feature')
+  })
+
+  it('carries budgets through create and edit and rejects them on other actions', async () => {
+    const { ctx, root } = await harness()
+    openTurn(root, { kind: 'user' }, 'keep this inside a budget')
+    const created = resultGoal(await execute(ctx, 'create_goal', {
+      objective: 'Bounded work',
+      max_goal_rounds: 5,
+      max_goal_tokens: 4000,
+      max_goal_work_ms: 90_000,
+    }, root.agent))
+    expect(created).toMatchObject({ maxGoalTokens: 4000, maxGoalWorkMs: 90_000 })
+    expect(resultJson(await execute(ctx, 'get_goal', {}, root.agent))['goal'])
+      .toMatchObject({ maxGoalTokens: 4000, tokensUsed: 0, maxGoalWorkMs: 90_000, workMsUsed: 0 })
+
+    const edited = resultGoal(await execute(ctx, 'update_goal', {
+      goal_id: created.id,
+      revision: created.revision,
+      action: 'edit',
+      max_goal_tokens: 9000,
+    }, root.agent))
+    expect(edited).toMatchObject({ maxGoalTokens: 9000, maxGoalWorkMs: 90_000 })
+
+    const pause = await execute(ctx, 'update_goal', {
+      goal_id: edited.id,
+      revision: edited.revision,
+      action: 'pause',
+      max_goal_work_ms: 1000,
+    }, root.agent)
+    expect(pause.error?.info?.code).toBe('GOAL_TOOL_INVALID_UPDATE')
+  })
+
+  it('reports an exhausted budget and omits an unmeasured spend', async () => {
+    const { ctx, root } = await harness()
+    openTurn(root, { kind: 'user' }, 'report the budget')
+    await execute(ctx, 'create_goal', { objective: 'Bounded work', max_goal_tokens: 10 }, root.agent)
+    const current = ctx.goals.get(root.agent)!
+    const read = vi.spyOn(ctx.goals, 'get')
+
+    read.mockReturnValue({ ...current, tokensUsed: 10, exhaustedBudget: 'tokens' })
+    expect(resultJson(await execute(ctx, 'get_goal', {}, root.agent))['goal'])
+      .toMatchObject({ maxGoalTokens: 10, tokensUsed: 10, budgetExhausted: 'tokens' })
+
+    // A deployment that stopped metering reports an absent spend rather than zero.
+    read.mockReturnValue({ ...current, tokensUsed: null, workMsUsed: null })
+    const unmetered = resultJson(await execute(ctx, 'get_goal', {}, root.agent))['goal']
+    expect(unmetered).not.toHaveProperty('tokensUsed')
+    expect(unmetered).not.toHaveProperty('workMsUsed')
   })
 
   it('rejects agentless, driverless, non-human, and live-child creation', async () => {

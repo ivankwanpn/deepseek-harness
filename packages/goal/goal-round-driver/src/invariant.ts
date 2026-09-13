@@ -36,6 +36,11 @@ function goalView(folded: FoldedGoal, source: GoalMessageSource, fail: Invariant
   return {
     ...goal,
     roundsStarted: folded.roundsStarted,
+    tokensUsed: source.tokensUsed ?? null,
+    workMsUsed: source.workMsUsed ?? null,
+    // The prompt renders ceilings and spend only; exhaustion is not model-visible
+    // there, so the reconstruction carries no verdict to disagree with.
+    exhaustedBudget: null,
     createdAt: folded.createdAt,
     updatedAt: folded.updatedAt,
     activation: 'armed',
