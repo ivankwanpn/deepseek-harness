@@ -38,6 +38,8 @@ bridge 经由普通的持久性屏障实体化：`ctx.sessions.flush(session)` �
 
 建议性 LLM catalog 现在服务于另一个自动化 consumer，但不会成为请求校验。ACP 公开按提供方分组的 `model` select，其不透明值保留提供方／模型对；还会公开来自已解析确切模型的依赖 `reasoning_effort` select。具有 efforts 但没有 adapter 配置默认值的模型会包含 `Provider default`，以保留省略状态并让提供方自行选择。新建、恢复和设置响应都返回完整状态。Adapter 拓扑事件发出 `config_option_update`；每个会话按接收顺序串行处理变更。配置的 ACP 提供方／模型仍是初始选择；未列出的配置路由会合成到返回选项中，而不会被拒绝。
 
+拓扑发现在输出链之外执行，不能阻塞 prompt 完成或 close。关闭开始后才完成的结果会被丢弃；[ACP 快照比较](../testing/2026-09-13-acp-snapshot-topology-notifications.zh.md)遵循这种尽力交付行为。
+
 ## 标准 MCP 映射
 
 `session/new` 和 `session/resume` 接受标准 stdio 和 Streamable HTTP MCP 声明。Stdio 使用会话 `cwd`；HTTP 使用已声明 URL 和 header；两者都保留 `dsh-mcp-client` 的超时和重连默认值。名称、命令、URL、环境项、header 和重复的规范化 namespace 都会在 Agent 公布前校验。初始连接或发现失败会回滚尚未公布的 Agent。

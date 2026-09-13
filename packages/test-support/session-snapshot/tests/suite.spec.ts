@@ -40,6 +40,7 @@ import {
   type SharedSnapshotClaim,
   stabilizeRefreshLog,
   stdoutExpectedVariants,
+  omitAcpTopologyUpdates,
   systemPromptPrecedesRequests,
   unknownToolCallIds,
 } from '../src/suite.ts'
@@ -54,6 +55,55 @@ import {
  * Record tests use a temp copy. To intentionally rebuild their committed fixtures, run this
  * spec once with `ACP_SNAPSHOT_SPEC_BOOTSTRAP=1`, then review and commit the resulting tree.
  */
+
+describe('ACP stdout topology projection', () => {
+  const notification = {
+    jsonrpc: '2.0', method: 'session/update',
+    params: { sessionId: 'session', update: { sessionUpdate: 'config_option_update', configOptions: [] } },
+  }
+  const stable = [
+    { jsonrpc: '2.0', id: 1, result: { configOptions: [] } },
+    { jsonrpc: '2.0', method: 'session/update', params: {
+      update: { sessionUpdate: 'agent_message_chunk', content: { text: JSON.stringify(notification) } },
+    } },
+    { jsonrpc: '2.0', id: 2, result: { stopReason: 'end_turn' } },
+  ].map(frame => JSON.stringify(frame))
+  const transcript = (lines: string[]): string => `${lines.join('\n')}\n`
+
+  it('compares every notification position and multiplicity to the same transcript', () => {
+    const expected = transcript(stable)
+    const update = JSON.stringify(notification)
+    for (let position = 0; position <= stable.length; position++) {
+      for (const updates of [[], [update], [update, update]]) {
+        const variant = transcript([...stable.slice(0, position), ...updates, ...stable.slice(position)])
+        expect(omitAcpTopologyUpdates(variant)).toBe(expected)
+        expect(omitAcpTopologyUpdates(expected)).toBe(omitAcpTopologyUpdates(variant))
+      }
+    }
+  })
+
+  it('preserves other frames and protocol-like user or tool data byte for byte', () => {
+    const frames = [
+      null, [], 'config_option_update',
+      { ...notification, jsonrpc: '1.0' },
+      { ...notification, id: 0 },
+      { ...notification, id: null },
+      { ...notification, method: 'other' },
+      { ...notification, params: null },
+      { ...notification, params: { update: null } },
+      { ...notification, params: { update: { sessionUpdate: 'tool_call_update', content: notification } } },
+      { jsonrpc: '2.0', id: 3, result: notification },
+    ].map(frame => JSON.stringify(frame, null, 0))
+    const input = transcript([...stable, ...frames])
+    expect(omitAcpTopologyUpdates(input)).toBe(input)
+    expect(omitAcpTopologyUpdates('')).toBe('')
+    expect(omitAcpTopologyUpdates('\n')).toBe('\n')
+  })
+
+  it('rejects malformed JSON instead of hiding protocol stdout corruption', () => {
+    expect(() => omitAcpTopologyUpdates('not JSON\n')).toThrow(SyntaxError)
+  })
+})
 
 const fakeAgent = fileURLToPath(new URL('./fixtures/fake-acp-agent.ts', import.meta.url))
 const AGENT = {
@@ -140,9 +190,18 @@ if (!BOOTSTRAP) {
 const refreshDir = mkdtempSync(join(tmpdir(), 'acp-snap-refresh-suite-'))
 cpSync(REPLAY_DIR, refreshDir, { recursive: true })
 staleRefreshFixtures(refreshDir)
+const replayDir = mkdtempSync(join(tmpdir(), 'acp-snap-replay-suite-'))
+cpSync(REPLAY_DIR, replayDir, { recursive: true })
+const replayStdoutPath = join(replayDir, 'plain-turn', 'stdout.expected.jsonl')
+const replayStdout = readFileSync(replayStdoutPath, 'utf8') + `${JSON.stringify({
+  jsonrpc: '2.0', method: 'session/update',
+  params: { sessionId: '{{sessionId}}', update: { sessionUpdate: 'config_option_update', configOptions: [] } },
+})}\n`
+writeFileSync(replayStdoutPath, replayStdout)
 afterAll(async () => {
   if (!BOOTSTRAP) await rm(recordDir, { recursive: true, force: true })
   await rm(refreshDir, { recursive: true, force: true })
+  await rm(replayDir, { recursive: true, force: true })
 })
 
 function staleRefreshFixtures(dir: string): void {
@@ -170,7 +229,10 @@ function staleRefreshFixtures(dir: string): void {
 }
 
 describe('defineAcpSnapshotSuite: replay mode', () => {
-  defineAcpSnapshotSuite({ agent: AGENT, snapshotsDir: REPLAY_DIR, scenarios: REPLAY_SCENARIOS, mode: 'replay' })
+  defineAcpSnapshotSuite({ agent: AGENT, snapshotsDir: replayDir, scenarios: REPLAY_SCENARIOS, mode: 'replay' })
+  it('compares an expected-only topology notification without rewriting the fixture', () => {
+    expect(readFileSync(replayStdoutPath, 'utf8')).toBe(replayStdout)
+  })
 })
 
 // The record suite's tests run in registration order: rec-pin re-records the

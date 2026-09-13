@@ -38,6 +38,8 @@ The bridge materializes through the ordinary durability barrier: `ctx.sessions.f
 
 The advisory LLM catalog now serves another automation consumer without becoming request validation. ACP exposes a provider-grouped `model` select whose opaque values retain the provider/model pair, plus a dependent `reasoning_effort` select from the resolved exact model. A model with efforts but no adapter-configured default includes `Provider default`, which preserves omission and lets the provider choose. New, resume, and set responses return the complete state. Adapter topology events emit `config_option_update`; per-session mutations serialize in receive order. The configured ACP provider/model remains the initial selection, and unlisted configured routes are synthesized into the returned choices instead of being rejected.
 
+Topology discovery runs outside the output chain and cannot block prompt completion or close. Results that finish after close starts are discarded; [ACP snapshot comparison](../testing/2026-09-13-acp-snapshot-topology-notifications.md) accounts for this best-effort delivery.
+
 ## Standard MCP mapping
 
 `session/new` and `session/resume` accept standard stdio and Streamable HTTP MCP declarations. Stdio uses the session `cwd`; HTTP uses the declared URL and headers; both retain `dsh-mcp-client` timeout and reconnect defaults. Names, commands, URLs, environment entries, headers, and duplicate normalized namespaces are validated before Agent publication. Initial connection or discovery failure rolls the unpublished Agent back.

@@ -84,6 +84,8 @@ spill 场景通过真实本地提供方保存到私有临时根目录。fixture 
 
 每个 pin 默认拥有其生成的 `system-prompt.expected.md` 或 `tool-schemas.expected.json` 伴随文件；当完整的对应序列相同时，`systemPromptSource` 与 `toolSchemasSource` 指定另一个 pin 作为来源，因此每个不同版本只提交一次。系统提示是 surface 节点 0，作为 `system/message` 事件记录在该步骤第一个 `request/header` 之前；每个 fixture 把其文本块存储为 `"text":"{{system}}"`，提示词伴随文件保留完整文本。该 pin 的 `request/header` 事件存储 `"tools":"{{tools}}"`，同时保留配置与原因，结构化 schema 伴随文件保留完整目录。自身作用域组合出不同请求的 child Session 按 fixture 索引以 `pinsChildToolSchemas` 与 `pinsChildSystemPrompts` 单独声明。运行中改变请求 header 的场景声明 `expectedHeaderChanges`；运行中提示词发生变化的场景——替换节点 0，或在 `in-history` 路由上追加到已缓存历史之后——声明 `expectedPromptChanges`，每次变化在提示词伴随文件中增加一个 `<!-- system/message change N -->` 小节。manifest 中对应字段为 `header.changes` 与 `header.promptChanges`。
 
+ACP stdout 比较仅在捕获值与已提交值两侧省略标记为 `config_option_update` 的 JSON-RPC `session/update` 通知。模型发现尽力完成，可能在会话开始关闭后才结束；[ACP bridge 测试](../../acp/acp/tests/bridge.spec.ts)负责通知内容以及不阻塞 prompt／close 的行为。配置响应与所有其他帧仍参与比较。Record 和 refresh 写入同一投影；replay 从不重写 stdout fixture。[决策记录](../../../.agents/notes/implemented/testing/2026-09-13-acp-snapshot-topology-notifications.zh.md)解释了比较的确定性。
+
 ### 平台与组合变体
 
 需要非 Windows 主机的场景声明 `posixOnly`，在 Windows 上跳过运行测试，但 fixture 保护仍在所有平台覆盖其已提交文件；组合需要可用 `pwsh` 的场景声明 `pwshOnly`。当临时目录授权自身待测时，`workspaceParent` 将生成子级 cwd 移出平台临时区域；场景签入的 `workspace/` 会先复制到该子级，随后 `prepareWorkspace` 在 agent 启动前针对生成 cwd 运行。默认生成的 workspace 在会话 fixture 中存储为 `{{cwd}}`，使平台临时根目录与随机 basename 不影响录制。headless manifest 在测试 Session workspace 授权本身时使用 `workspace.parent: outside-temp`。适配器在父目录可写且位于系统临时授权之外时，于平台临时根目录旁分配目录，否则使用 home，并拒绝已被自动临时写授权覆盖的生成 cwd。
