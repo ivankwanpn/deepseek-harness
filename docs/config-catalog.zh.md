@@ -807,10 +807,18 @@ export type Config = LocalConfig
 export interface Config {
   /** Round cap used when a create request omits its own; absent or null leaves it unbounded. */
   defaultMaxGoalRounds?: number
-  /** Token ceiling used when a create request omits its own; absent leaves the goal unbounded. */
-  defaultMaxGoalTokens?: number
-  /** Active model-and-tool millisecond ceiling used when a create request omits its own. */
-  defaultMaxGoalWorkMs?: number
+  /**
+   * Token ceiling for every goal this deployment admits. It is the default a
+   * create request inherits and the maximum any request may name; unset leaves
+   * goals unbounded in tokens.
+   */
+  maxGoalTokens?: number
+  /**
+   * Active model-and-tool millisecond ceiling for every goal this deployment
+   * admits. It is the default a create request inherits and the maximum any
+   * request may name; unset leaves goals unbounded in active work.
+   */
+  maxGoalWorkMs?: number
 }
 ```
 

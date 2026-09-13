@@ -33,23 +33,23 @@ A goal suits one long-running completion objective that should continue across a
 
 ### Set up the service
 
-Load the package with a composition entry; the deployment choices are the default round cap, token ceiling, and active-work ceiling applied to creates that do not name their own. Every one of them may be left out: a goal then carries no cap of that kind.
+Load the package with a composition entry; the deployment choices are the round cap, the token ceiling, and the active-work ceiling. A budget field bounds every goal this deployment admits: it is both the default a create request inherits and the most any request may be granted. Every field may be left out, and a goal then carries no cap of that kind.
 
 ```yaml
 - name: '@deepseek-ai/dsh-goal'
   config:
     defaultMaxGoalRounds: 1000
-    defaultMaxGoalTokens: 2000000
-    defaultMaxGoalWorkMs: 3600000
+    maxGoalTokens: 2000000
+    maxGoalWorkMs: 3600000
 ```
 
 | Field | Default | Meaning |
 |---|---|---|
 | `defaultMaxGoalRounds` | none | Round cap applied when a create request omits its own; unset leaves continuation unbounded by rounds |
-| `defaultMaxGoalTokens` | none | Provider-token ceiling applied when a create request omits its own |
-| `defaultMaxGoalWorkMs` | none | Active model-and-tool millisecond ceiling applied when a create request omits its own |
+| `maxGoalTokens` | none | Provider-token ceiling for this deployment: the default a create inherits and the most any create or edit may name |
+| `maxGoalWorkMs` | none | Active model-and-tool millisecond ceiling for this deployment: the default a create inherits and the most any create or edit may name |
 
-`defaultMaxGoalRounds` must be a positive safe integer; a create request that names its own cap overrides it, and a create request that names `null` clears it. The two budget defaults must be positive safe integers, and leaving either unset keeps every goal it governs unbounded. Naming a budget requires the matching accounting projection to be registered — [`@deepseek-ai/dsh-token-meter`](../../llm/token-meter/README.md) for tokens and [`@deepseek-ai/dsh-session-stats`](../../session/session-stats/README.md) for active work — and a create or edit that names one without it is refused. The base bundle mounts `token-meter`; only `web-app` mounts `session-stats`, so a headless composition can budget tokens and needs an explicit `session-stats` entry before it can budget active work. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-goal) is the exhaustive source for every accepted field.
+`defaultMaxGoalRounds` must be a positive safe integer; a create request that names its own cap overrides it, and a create request that names `null` clears it. The two budget ceilings must be positive safe integers. A create or edit that names more than a configured ceiling, or that names `null` while the deployment bounds that budget, is refused with `GOAL_BUDGET_EXCEEDS_LIMIT`, so a model can tighten a goal's budget but never widen it past what the deployment allows. Naming a budget requires the matching accounting projection to be registered — [`@deepseek-ai/dsh-token-meter`](../../llm/token-meter/README.md) for tokens and [`@deepseek-ai/dsh-session-stats`](../../session/session-stats/README.md) for active work — and a create or edit that names one without it is refused. The base bundle mounts `token-meter`; only `web-app` mounts `session-stats`, so a headless composition can budget tokens and needs an explicit `session-stats` entry before it can budget active work. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-goal) is the exhaustive source for every accepted field.
 
 <a id="runtime-defaults"></a>
 ### Runtime defaults

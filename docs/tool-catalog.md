@@ -1064,11 +1064,11 @@ Create one persisted same-session completion goal when the current direct human 
     },
     "max_goal_tokens": {
       "type": "number",
-      "description": "Optional positive safe-integer ceiling on provider tokens spent under this goal. Omit it to inherit the deployment default."
+      "description": "Optional positive safe-integer ceiling on provider tokens spent under this goal. Omit it to inherit the deployment limit, which is also the most this goal may be granted."
     },
     "max_goal_work_ms": {
       "type": "number",
-      "description": "Optional positive safe-integer ceiling, in milliseconds, on model-and-tool time spent under this goal. Omit it to inherit the deployment default."
+      "description": "Optional positive safe-integer ceiling, in milliseconds, on model-and-tool time spent under this goal. Omit it to inherit the deployment limit, which is also the most this goal may be granted."
     }
   },
   "required": [
@@ -1129,11 +1129,11 @@ Update the exact current goal revision. edit, pause, and resume require a direct
     },
     "max_goal_tokens": {
       "type": "number",
-      "description": "Replacement token ceiling; valid only with action edit."
+      "description": "Replacement token ceiling, at most the deployment limit; valid only with action edit."
     },
     "max_goal_work_ms": {
       "type": "number",
-      "description": "Replacement model-and-tool millisecond ceiling; valid only with action edit."
+      "description": "Replacement model-and-tool millisecond ceiling, at most the deployment limit; valid only with action edit."
     },
     "blocked_reason": {
       "type": "string",

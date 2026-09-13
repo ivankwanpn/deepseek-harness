@@ -33,23 +33,23 @@ goal 适合一个需要跨自动 Goal Round 持续的长期完成目标——例
 
 ### 配置服务
 
-通过组合配置项加载本包；部署选择是默认 Round 上限、token 上限与活跃工作上限，应用于未自行指定它们的 create。三者都可以省略：此时该 goal 不带该类上限。
+通过组合配置项加载本包；部署选择是 Round 上限、token 上限与活跃工作上限。预算字段约束本部署接纳的每一个 goal：它既是 create 请求继承的默认值，也是任何请求可获得的最大值。三个字段都可以省略：此时该 goal 不带该类上限。
 
 ```yaml
 - name: '@deepseek-ai/dsh-goal'
   config:
     defaultMaxGoalRounds: 1000
-    defaultMaxGoalTokens: 2000000
-    defaultMaxGoalWorkMs: 3600000
+    maxGoalTokens: 2000000
+    maxGoalWorkMs: 3600000
 ```
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `defaultMaxGoalRounds` | 无 | 当 create 请求省略上限时应用的 Round 上限；留空则续行不受轮次约束 |
-| `defaultMaxGoalTokens` | 无 | 当 create 请求省略上限时应用的提供方 token 上限 |
-| `defaultMaxGoalWorkMs` | 无 | 当 create 请求省略上限时应用的模型与工具活跃毫秒上限 |
+| `maxGoalTokens` | 无 | 本部署的提供方 token 上限：create 继承的默认值，也是任何 create 或 edit 可指定的最大值 |
+| `maxGoalWorkMs` | 无 | 本部署的模型与工具活跃毫秒上限：create 继承的默认值，也是任何 create 或 edit 可指定的最大值 |
 
-`defaultMaxGoalRounds` 必须是正的安全整数；指定了自身上限的 create 请求会覆盖它，指定 `null` 则清除它。两个预算默认值必须是正的安全整数，且任一留空都会让其管辖的每个 goal 保持无上限。指定预算要求已注册对应的记账投影——token 用 [`@deepseek-ai/dsh-token-meter`](../../llm/token-meter/README.zh.md)，活跃工作用 [`@deepseek-ai/dsh-session-stats`](../../session/session-stats/README.zh.md)——未注册时指定预算的 create 或 edit 会被拒绝。base bundle 挂载 `token-meter`，只有 `web-app` 挂载 `session-stats`，因此无头组合可以为 token 设预算，但要为活跃工作设预算必须先显式加入 `session-stats` 条目。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-goal)是每个受支持字段的穷尽式真源。
+`defaultMaxGoalRounds` 必须是正的安全整数；指定了自身上限的 create 请求会覆盖它，指定 `null` 则清除它。两个预算上限必须是正的安全整数。任何 create 或 edit 若指定了超过已配置上限的值，或在该预算受部署约束时指定 `null`，都会以 `GOAL_BUDGET_EXCEEDS_LIMIT` 被拒绝；因此模型可以收紧某个 goal 的预算，但永远不能把它放宽到部署允许的范围之外。指定预算要求已注册对应的记账投影——token 用 [`@deepseek-ai/dsh-token-meter`](../../llm/token-meter/README.zh.md)，活跃工作用 [`@deepseek-ai/dsh-session-stats`](../../session/session-stats/README.zh.md)——未注册时指定预算的 create 或 edit 会被拒绝。base bundle 挂载 `token-meter`，只有 `web-app` 挂载 `session-stats`，因此无头组合可以为 token 设预算，但要为活跃工作设预算必须先显式加入 `session-stats` 条目。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-goal)是每个受支持字段的穷尽式真源。
 
 <a id="runtime-defaults"></a>
 ### 运行时默认值

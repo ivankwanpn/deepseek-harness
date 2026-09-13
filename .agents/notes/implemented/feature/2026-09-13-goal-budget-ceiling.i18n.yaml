@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-13-goal-budget-ceiling.md
+2026-09-13-goal-budget-ceiling.md: 4207ac8a2f705fa5502f89079b0303658729a1c5
+2026-09-13-goal-budget-ceiling.zh.md: ae93b7365b87019de08ee754fccba4567b72dd46
