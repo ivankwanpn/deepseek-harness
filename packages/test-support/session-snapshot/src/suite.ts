@@ -1178,6 +1178,29 @@ export async function assertSessionFixtureStorage(dir: string, scenarioName: str
 }
 
 /**
+ * Omit best-effort ACP topology notifications from either side of a stdout comparison.
+ * Discovery may settle after close starts and be discarded; awaiting it would let a hung
+ * provider block close. ACP bridge.spec.ts owns notification contents and nonblocking close.
+ * Other frames retain their bytes, including configuration responses and embedded text.
+ * Invalid JSON throws, preserving the protocol-stdout purity check.
+ * @param stdout The JSONL stdout transcript, actual or committed.
+ * @returns The transcript without config-option session notifications.
+ */
+export function omitAcpTopologyUpdates(stdout: string): string {
+  return stdout.split('\n').filter((line) => {
+    if (line.trim().length === 0) return true
+    const frame: unknown = JSON.parse(line)
+    return !(isRecord(frame)
+      && frame.jsonrpc === '2.0'
+      && !('id' in frame)
+      && frame.method === 'session/update'
+      && isRecord(frame.params)
+      && isRecord(frame.params.update)
+      && frame.params.update.sessionUpdate === 'config_option_update')
+  }).join('\n')
+}
+
+/**
  * Register the suite: one test per scenario (the expected-output and log comparisons and
  * the header and prompt uniformity guard) plus the fixture guard block (no orphan
  * scenario dirs, required files present, exactly one pin per header class,
@@ -1420,11 +1443,14 @@ export function defineAcpSnapshotSuite(options: SnapshotSuiteOptions): void {
         }
 
         for (const expected of stdoutExpectedVariants(scenario)) {
-          const stdout = normalizeStdout(result.rawStdout, ctx, { cwdPathMode: expected.cwdPathMode })
-          if (REFRESHING) {
+          const stdout = omitAcpTopologyUpdates(normalizeStdout(result.rawStdout, ctx, {
+            cwdPathMode: expected.cwdPathMode,
+          }))
+          if (REFRESHING || RECORDING) {
             await writeFile(join(dir, expected.file), stdout)
           }
-          await expect(stdout, `${expected.file} mismatch`).toMatchFileSnapshot(join(dir, expected.file))
+          const committed = await readFile(join(dir, expected.file), 'utf8')
+          expect(stdout, `${expected.file} mismatch`).toEqual(omitAcpTopologyUpdates(committed))
         }
 
         // A model turn always produces a log worth comparing; an explicitly
