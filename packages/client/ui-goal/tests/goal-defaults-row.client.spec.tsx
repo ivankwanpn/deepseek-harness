@@ -113,4 +113,11 @@ describe('GoalDefaultsRow', () => {
     fireEvent.blur(input('Token budget'))
     expect(clearLimit).toHaveBeenCalledWith('defaultMaxGoalTokens')
   })
+
+  it('keeps the section it already adopted when an older revision arrives', () => {
+    const { store } = mount({ rounds: 256, tokens: null, workMs: null })
+    act(() => { store.actions.sync({ rounds: 9, tokens: 9, workMs: 9 }, 0) })
+    expect(input('Round limit').value).toBe('256')
+    expect(input('Token budget').value).toBe('')
+  })
 })

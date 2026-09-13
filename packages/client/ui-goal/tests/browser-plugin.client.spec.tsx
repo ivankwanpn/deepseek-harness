@@ -56,6 +56,8 @@ async function bench(options: {
   activation?: GoalActivation
   failWith?: RemoteFailure
   settings?: { defaultMaxGoalRounds?: number; defaultMaxGoalTokens?: number; defaultMaxGoalWorkMs?: number }
+  settingsRevision?: number | null
+  failWrites?: boolean
 } = {}) {
   const ctx = new Context()
   const calls: { method: string; args: unknown[] }[] = []
@@ -151,6 +153,12 @@ async function bench(options: {
   const settingsWrites: { field: string; value?: unknown }[] = []
   const settingsListeners = new Set<() => void>()
   const section = options.settings
+  const revision = options.settings === undefined
+    ? undefined
+    : options.settingsRevision === null ? undefined : options.settingsRevision ?? 1
+  const settleWrite = (): Promise<void> => options.failWrites === true
+    ? Promise.reject(new Error('settings write refused'))
+    : Promise.resolve()
   ctx.provide('settingsScope', {
     bind: () => ({
       getSnapshot: () => ({
@@ -158,7 +166,7 @@ async function bench(options: {
         value: section,
         base: undefined,
         user: undefined,
-        revision: 1,
+        revision,
         writable: true,
         mode: 'host',
       }),
@@ -168,11 +176,11 @@ async function bench(options: {
       },
       set: (field: string, value: unknown) => {
         settingsWrites.push({ field, value })
-        return Promise.resolve()
+        return settleWrite()
       },
       unset: (field: string) => {
         settingsWrites.push({ field })
-        return Promise.resolve()
+        return settleWrite()
       },
     }),
   })
@@ -343,7 +351,52 @@ describe('ui-goal browser plugin', () => {
     expect(b.defaultsEntry()).toBeUndefined()
     expect(b.settingsListenerCount()).toBe(0)
   })
+
+  it('leaves the row empty until a section with a revision arrives', async () => {
+    const absent = await bench()
+    await absent.fiber.await()
+    const absentSync = vi.fn()
+    defaultsInject(absent)({ sync: absentSync })
+    expect(absentSync).not.toHaveBeenCalled()
+
+    const unresolved = await bench({ settings: { defaultMaxGoalRounds: 256 }, settingsRevision: null })
+    await unresolved.fiber.await()
+    const unresolvedSync = vi.fn()
+    defaultsInject(unresolved)({ sync: unresolvedSync })
+    expect(unresolvedSync).not.toHaveBeenCalled()
+  })
+
+  it('adopts a section that carries no limits at all', async () => {
+    const b = await bench({ settings: {} })
+    await b.fiber.await()
+    const sync = vi.fn()
+    defaultsInject(b)({ sync })
+    expect(sync).toHaveBeenCalledWith({ rounds: null, tokens: null, workMs: null }, 1)
+  })
+
+  it('contains a refused settings write instead of rejecting the caller', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const b = await bench({ settings: { defaultMaxGoalRounds: 256 }, failWrites: true })
+    await b.fiber.await()
+    const injected = defaultsInject(b)({ sync: vi.fn() })
+    injected.setLimit('defaultMaxGoalRounds', 40)
+    await vi.waitFor(() => { expect(warn).toHaveBeenCalledWith('ui-goal: goal default write failed', expect.anything()) })
+    warn.mockRestore()
+  })
 })
+
+/**
+ * Call the row's inject face with a stand-in action bag.
+ * @param b - the bench whose registered row is under test.
+ * @returns the injected face the row receives.
+ */
+function defaultsInject(
+  b: Awaited<ReturnType<typeof bench>>,
+): (actions: { sync: (next: unknown, revision: number) => void }) => GoalDefaultsRowInjected {
+  return b.defaultsEntry()?.inject as unknown as (
+    actions: { sync: (next: unknown, revision: number) => void },
+  ) => GoalDefaultsRowInjected
+}
 
 describe('GoalDock adapter', () => {
   it('renders the projected goal snapshot and nothing for absent/null', () => {
