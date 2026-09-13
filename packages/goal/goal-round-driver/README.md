@@ -83,7 +83,7 @@ This section explains how the driver schedules rounds without races; the observa
 
 ### The round prompt
 
-The retained prompt is one text block: the JSON-quoted objective and `round/maxGoalRounds` on the first lines, then the working instructions. The invariant companion reconstructs the goal from the durable prefix and rejects any goal-sourced message whose content does not match the prompt exactly.
+The retained prompt is one text block: the JSON-quoted objective and the round line on the first lines, then the working instructions. The round line reads `round/maxGoalRounds` under a named cap and the bare round number while rounds are unbounded. The invariant companion reconstructs the goal from the durable prefix and rejects any goal-sourced message whose content does not match the prompt exactly.
 
 </details>
 

@@ -803,7 +803,7 @@ Requires: `agents` · `sessionProjections`
 ```ts config-catalog
 /** Deployment defaults for goal creation. */
 export interface Config {
-  /** Total rounds used when a create request omits its own cap. */
+  /** Round cap used when a create request omits its own; absent or null leaves it unbounded. */
   defaultMaxGoalRounds?: number
   /** Token ceiling used when a create request omits its own; absent leaves the goal unbounded. */
   defaultMaxGoalTokens?: number
@@ -812,7 +812,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/goal/goal/src/index.ts:194`](../packages/goal/goal/src/index.ts)
+Source: [`packages/goal/goal/src/index.ts:196`](../packages/goal/goal/src/index.ts)
 
 <a id="deepseek-aidsh-headless"></a>
 

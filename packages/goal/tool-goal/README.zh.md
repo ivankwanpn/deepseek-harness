@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 工具
 
-三个工具都返回相同的紧凑 JSON——没有当前 goal 时为 `{ goal: null }`，否则返回 goal 的 id、revision、目标、phase、已开始 Round、Round 上限、可选的 blocker reason 与续行是否已启用——与 Native 调用方已经渲染的内容一致。
+三个工具都返回相同的紧凑 JSON——没有当前 goal 时为 `{ goal: null }`，否则返回 goal 的 id、revision、目标、phase、已开始 Round、该 goal 有上限时的 Round 上限、可选的 blocker reason 与续行是否已启用——与 Native 调用方已经渲染的内容一致。
 
 | 工具 | 作用 |
 |---|---|
@@ -37,7 +37,7 @@ kind: "package-reference"
 | `create_goal(objective)` | 根据人类直接发起的顶层轮次创建一个 goal |
 | `update_goal(goal_id, revision, action, objective?, max_goal_rounds?, blocked_reason?)` | 对精确 goal revision 执行 `edit`、`pause`、`resume`、`complete` 或 `blocked` |
 
-Round 上限由部署决定：`create_goal` 继承配置的默认值，只有需要人类授权的 `update_goal` `edit` action 才能替换它。
+Round 上限由部署决定：`create_goal` 继承配置的默认值，未配置的部署则让轮次不受约束，只有需要人类授权的 `update_goal` `edit` action 才能替换该上限。
 
 在 `update_goal` 之前调用 `get_goal`，并复制精确的 `goal_id` 与 `revision`；所有调用都互斥，因此模型排序的批次能观察到更早变更及其新 revision。替换值只属于 `edit`；`blocked_reason` 只有在 `blocked` 时才必填，并以稳定代码 `model-reported` 持久化。严格 schema 下的空字符串和零填充值视为省略，而有意义的值仍限定到各自 action。
 
@@ -86,7 +86,7 @@ Round 上限由部署决定：`create_goal` 继承配置的默认值，只有需
 
 ### 工具输出
 
-三个工具共用一种规范输出：紧凑 JSON `{ goal: null }`，或 `{ goal: { id, revision, objective, phase, roundsStarted, maxGoalRounds, blockedReason? }, activation }`。结果中的 `activation` 是实时观察值，绝不会成为回放权限依据。UI 客户端收到纯通用卡片——`get_goal` 为 read，变更使用 other。
+三个工具共用一种规范输出：紧凑 JSON `{ goal: null }`，或 `{ goal: { id, revision, objective, phase, roundsStarted, maxGoalRounds?, blockedReason? }, activation }`，其中 `maxGoalRounds` 恰好在该 goal 带上限时出现。结果中的 `activation` 是实时观察值，绝不会成为回放权限依据。UI 客户端收到纯通用卡片——`get_goal` 为 read，变更使用 other。
 
 </details>
 
