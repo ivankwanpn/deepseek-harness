@@ -807,10 +807,14 @@ export type Config = LocalConfig
 export interface Config {
   /** Total rounds used when a create request omits its own cap. */
   defaultMaxGoalRounds?: number
+  /** Token ceiling used when a create request omits its own; absent leaves the goal unbounded. */
+  defaultMaxGoalTokens?: number
+  /** Active model-and-tool millisecond ceiling used when a create request omits its own. */
+  defaultMaxGoalWorkMs?: number
 }
 ```
 
-来源：[`packages/goal/goal/src/index.ts:172`](../packages/goal/goal/src/index.ts)
+来源：[`packages/goal/goal/src/index.ts:191`](../packages/goal/goal/src/index.ts)
 
 <a id="deepseek-aidsh-headless"></a>
 
