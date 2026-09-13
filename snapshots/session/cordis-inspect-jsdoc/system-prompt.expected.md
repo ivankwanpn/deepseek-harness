@@ -240,6 +240,10 @@ interface ToolArgsMap {
     objective: string;
     /** Optional positive safe-integer limit on automatic continuation rounds. */
     max_goal_rounds?: number;
+    /** Optional positive safe-integer ceiling on provider tokens spent under this goal. Omit it to inherit the deployment default. */
+    max_goal_tokens?: number;
+    /** Optional positive safe-integer ceiling, in milliseconds, on model-and-tool time spent under this goal. Omit it to inherit the deployment default. */
+    max_goal_work_ms?: number;
   } & Record<string, JsonValue>;
   /** Edit an existing UTF-8 text file by replacing literal text. */
   edit: {
@@ -261,7 +265,7 @@ interface ToolArgsMap {
     /** The complete plan, as markdown, starting with a # heading that names it. */
     plan: string;
   } & Record<string, JsonValue>;
-  /** Read the current same-session goal, including its exact id/revision, objective, phase, completed continuation rounds, round limit, blocker reason when present, and whether another continuation is armed. Call this before updating a goal. */
+  /** Read the current same-session goal, including its exact id/revision, objective, phase, completed continuation rounds, round limit, spent tokens and model-and-tool time against their budgets when set, blocker reason when present, and whether another continuation is armed. Call this before updating a goal. */
   get_goal: Record<string, JsonValue>;
   /** Find files whose paths match a glob pattern. Returns matching file paths — never directories — including hidden and ignored files (VCS metadata directories are excluded). Up to 100 paths come back in modification-time order; a larger result returns the first 100 paths in modification-time order, says so, and reports where the complete sorted list was saved. This tool does not enumerate directory entries. */
   glob: {
@@ -378,6 +382,10 @@ interface ToolArgsMap {
     objective?: string;
     /** Replacement cap; valid only with action edit. */
     max_goal_rounds?: number;
+    /** Replacement token ceiling; valid only with action edit. */
+    max_goal_tokens?: number;
+    /** Replacement model-and-tool millisecond ceiling; valid only with action edit. */
+    max_goal_work_ms?: number;
     /** Concrete blocking condition; required only with action blocked. */
     blocked_reason?: string;
   } & Record<string, JsonValue>;
@@ -488,6 +496,11 @@ interface ToolOutputMap {
       phase: "active" | "paused" | "blocked" | "complete";
       roundsStarted: number;
       maxGoalRounds: number;
+      maxGoalTokens?: number;
+      maxGoalWorkMs?: number;
+      tokensUsed?: number;
+      workMsUsed?: number;
+      budgetExhausted?: "tokens" | "work";
       blockedReason?: {
         code: string;
         message: string;
@@ -513,6 +526,11 @@ interface ToolOutputMap {
       phase: "active" | "paused" | "blocked" | "complete";
       roundsStarted: number;
       maxGoalRounds: number;
+      maxGoalTokens?: number;
+      maxGoalWorkMs?: number;
+      tokensUsed?: number;
+      workMsUsed?: number;
+      budgetExhausted?: "tokens" | "work";
       blockedReason?: {
         code: string;
         message: string;
@@ -671,6 +689,11 @@ interface ToolOutputMap {
       phase: "active" | "paused" | "blocked" | "complete";
       roundsStarted: number;
       maxGoalRounds: number;
+      maxGoalTokens?: number;
+      maxGoalWorkMs?: number;
+      tokensUsed?: number;
+      workMsUsed?: number;
+      budgetExhausted?: "tokens" | "work";
       blockedReason?: {
         code: string;
         message: string;

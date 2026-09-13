@@ -103,6 +103,10 @@ class CreateGoalArgs(TypedDict):
     objective: str
     # Optional positive safe-integer limit on automatic continuation rounds.
     max_goal_rounds: NotRequired[float]
+    # Optional positive safe-integer ceiling on provider tokens spent under this goal. Omit it to inherit the deployment default.
+    max_goal_tokens: NotRequired[float]
+    # Optional positive safe-integer ceiling, in milliseconds, on model-and-tool time spent under this goal. Omit it to inherit the deployment default.
+    max_goal_work_ms: NotRequired[float]
     # Additional keys beyond those declared are allowed.
 
 class CreateGoalOutput1(TypedDict):
@@ -119,6 +123,11 @@ class CreateGoalOutput2Goal(TypedDict):
     phase: Literal["active", "paused", "blocked", "complete"]
     roundsStarted: int
     maxGoalRounds: int
+    maxGoalTokens: NotRequired[int]
+    maxGoalWorkMs: NotRequired[int]
+    tokensUsed: NotRequired[int]
+    workMsUsed: NotRequired[int]
+    budgetExhausted: NotRequired[Literal["tokens", "work"]]
     blockedReason: NotRequired[CreateGoalOutput2GoalBlockedReason]
 
 class CreateGoalOutput2(TypedDict):
@@ -167,6 +176,11 @@ class GetGoalOutput2Goal(TypedDict):
     phase: Literal["active", "paused", "blocked", "complete"]
     roundsStarted: int
     maxGoalRounds: int
+    maxGoalTokens: NotRequired[int]
+    maxGoalWorkMs: NotRequired[int]
+    tokensUsed: NotRequired[int]
+    workMsUsed: NotRequired[int]
+    budgetExhausted: NotRequired[Literal["tokens", "work"]]
     blockedReason: NotRequired[GetGoalOutput2GoalBlockedReason]
 
 class GetGoalOutput2(TypedDict):
@@ -443,6 +457,10 @@ class UpdateGoalArgs(TypedDict):
     objective: NotRequired[str]
     # Replacement cap; valid only with action edit.
     max_goal_rounds: NotRequired[float]
+    # Replacement token ceiling; valid only with action edit.
+    max_goal_tokens: NotRequired[float]
+    # Replacement model-and-tool millisecond ceiling; valid only with action edit.
+    max_goal_work_ms: NotRequired[float]
     # Concrete blocking condition; required only with action blocked.
     blocked_reason: NotRequired[str]
     # Additional keys beyond those declared are allowed.
@@ -461,6 +479,11 @@ class UpdateGoalOutput2Goal(TypedDict):
     phase: Literal["active", "paused", "blocked", "complete"]
     roundsStarted: int
     maxGoalRounds: int
+    maxGoalTokens: NotRequired[int]
+    maxGoalWorkMs: NotRequired[int]
+    tokensUsed: NotRequired[int]
+    workMsUsed: NotRequired[int]
+    budgetExhausted: NotRequired[Literal["tokens", "work"]]
     blockedReason: NotRequired[UpdateGoalOutput2GoalBlockedReason]
 
 class UpdateGoalOutput2(TypedDict):
@@ -565,7 +588,7 @@ class Tools(Protocol):
     async def exit_plan_mode(self, args: ExitPlanModeArgs) -> ExitPlanModeOutput:
         """Use only in plan mode. Present your plan for the user's review and, on approval, leave plan mode. Send the COMPLETE plan as markdown, starting with a # heading that names it. The user may approve (carry out the plan from your next step) or keep planning — their feedback comes back in the tool result; revise and present again."""
     async def get_goal(self, args: dict[str, Any]) -> GetGoalOutput1 | GetGoalOutput2:
-        """Read the current same-session goal, including its exact id/revision, objective, phase, completed continuation rounds, round limit, blocker reason when present, and whether another continuation is armed. Call this before updating a goal."""
+        """Read the current same-session goal, including its exact id/revision, objective, phase, completed continuation rounds, round limit, spent tokens and model-and-tool time against their budgets when set, blocker reason when present, and whether another continuation is armed. Call this before updating a goal."""
     async def glob(self, args: GlobArgs) -> GlobOutput:
         """Find files whose paths match a glob pattern. Returns matching file paths — never directories — including hidden and ignored files (VCS metadata directories are excluded). Up to 100 paths come back in modification-time order; a larger result returns the first 100 paths in modification-time order, says so, and reports where the complete sorted list was saved. This tool does not enumerate directory entries."""
     async def grep(self, args: GrepArgs) -> GrepOutput:
