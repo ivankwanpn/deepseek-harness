@@ -129,7 +129,8 @@ function guidance(blockedAfter: number): string {
     + 'exact goal_id and revision. When a human asks how long the goal may run or how much '
     + 'resource it may spend, apply it with the tools you have: create_goal takes the budgets, '
     + 'and update_goal action edit changes the round cap or either budget on the current goal. '
-    + 'Whatever the human leaves unnamed keeps the deployment default. After session resume or '
+    + 'Whatever the human leaves unnamed keeps the deployment limit, and no request may exceed it. '
+    + 'After session resume or '
     + 'fork, an active goal is disarmed: when a human asks to continue or resume in any wording '
     + 'or language, use update_goal action resume to rearm it. Mark complete only when the '
     + 'objective is actually achieved. Mark '
@@ -237,12 +238,13 @@ export function apply(ctx: Context, config: Config): void {
       max_goal_tokens: {
         type: 'number',
         description: 'Optional positive safe-integer ceiling on provider tokens spent under this goal. '
-          + 'Omit it to inherit the deployment default.',
+          + 'Omit it to inherit the deployment limit, which is also the most this goal may be granted.',
       },
       max_goal_work_ms: {
         type: 'number',
         description: 'Optional positive safe-integer ceiling, in milliseconds, on model-and-tool time '
-          + 'spent under this goal. Omit it to inherit the deployment default.',
+          + 'spent under this goal. Omit it to inherit the deployment limit, which is also the most '
+          + 'this goal may be granted.',
       },
     },
     output: GOAL_OUTPUT,
@@ -278,11 +280,12 @@ export function apply(ctx: Context, config: Config): void {
       max_goal_rounds: { type: 'number', description: 'Replacement cap; valid only with action edit.' },
       max_goal_tokens: {
         type: 'number',
-        description: 'Replacement token ceiling; valid only with action edit.',
+        description: 'Replacement token ceiling, at most the deployment limit; valid only with action edit.',
       },
       max_goal_work_ms: {
         type: 'number',
-        description: 'Replacement model-and-tool millisecond ceiling; valid only with action edit.',
+        description: 'Replacement model-and-tool millisecond ceiling, at most the deployment limit; '
+          + 'valid only with action edit.',
       },
       blocked_reason: {
         type: 'string',

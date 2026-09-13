@@ -1070,11 +1070,11 @@ glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn �
     },
     "max_goal_tokens": {
       "type": "number",
-      "description": "Optional positive safe-integer ceiling on provider tokens spent under this goal. Omit it to inherit the deployment default."
+      "description": "Optional positive safe-integer ceiling on provider tokens spent under this goal. Omit it to inherit the deployment limit, which is also the most this goal may be granted."
     },
     "max_goal_work_ms": {
       "type": "number",
-      "description": "Optional positive safe-integer ceiling, in milliseconds, on model-and-tool time spent under this goal. Omit it to inherit the deployment default."
+      "description": "Optional positive safe-integer ceiling, in milliseconds, on model-and-tool time spent under this goal. Omit it to inherit the deployment limit, which is also the most this goal may be granted."
     }
   },
   "required": [
@@ -1135,11 +1135,11 @@ glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn �
     },
     "max_goal_tokens": {
       "type": "number",
-      "description": "Replacement token ceiling; valid only with action edit."
+      "description": "Replacement token ceiling, at most the deployment limit; valid only with action edit."
     },
     "max_goal_work_ms": {
       "type": "number",
-      "description": "Replacement model-and-tool millisecond ceiling; valid only with action edit."
+      "description": "Replacement model-and-tool millisecond ceiling, at most the deployment limit; valid only with action edit."
     },
     "blocked_reason": {
       "type": "string",

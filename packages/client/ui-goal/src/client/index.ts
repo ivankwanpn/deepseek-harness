@@ -60,11 +60,11 @@ const NS = 'goal'
  */
 const GOAL_SETTINGS_NS = 'goal'
 
-/** The deployment defaults `dsh-goal` resolves from that namespace. */
+/** The deployment limits `dsh-goal` resolves from that namespace. */
 interface GoalDefaults {
   defaultMaxGoalRounds?: number
-  defaultMaxGoalTokens?: number
-  defaultMaxGoalWorkMs?: number
+  maxGoalTokens?: number
+  maxGoalWorkMs?: number
 }
 
 /** Required services for the Goal dock, command-input projection, Remote mutations, and copy. */
@@ -155,8 +155,8 @@ export function apply(ctx: ClientContext): void {
       if (value === undefined || snapshot.revision === undefined) return
       bound?.sync({
         rounds: value.defaultMaxGoalRounds ?? null,
-        tokens: value.defaultMaxGoalTokens ?? null,
-        workMs: value.defaultMaxGoalWorkMs ?? null,
+        tokens: value.maxGoalTokens ?? null,
+        workMs: value.maxGoalWorkMs ?? null,
       }, snapshot.revision)
     }
     settingsCtx.effect(() => scope.subscribe(sync), 'ui-goal: goal default sync')

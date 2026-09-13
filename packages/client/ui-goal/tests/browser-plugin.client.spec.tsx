@@ -55,7 +55,7 @@ async function bench(options: {
   projection?: GoalProjection | null | undefined
   activation?: GoalActivation
   failWith?: RemoteFailure
-  settings?: { defaultMaxGoalRounds?: number; defaultMaxGoalTokens?: number; defaultMaxGoalWorkMs?: number }
+  settings?: { defaultMaxGoalRounds?: number; maxGoalTokens?: number; maxGoalWorkMs?: number }
   settingsRevision?: number | null
   failWrites?: boolean
 } = {}) {
@@ -335,10 +335,10 @@ describe('ui-goal browser plugin', () => {
     // The section is adopted at registration so the first render is never empty.
     expect(sync).toHaveBeenCalledWith({ rounds: 256, tokens: null, workMs: null }, 1)
     injected.setLimit('defaultMaxGoalRounds', 40)
-    injected.clearLimit('defaultMaxGoalTokens')
+    injected.clearLimit('maxGoalTokens')
     expect(b.settingsWrites).toEqual([
       { field: 'defaultMaxGoalRounds', value: 40 },
-      { field: 'defaultMaxGoalTokens' },
+      { field: 'maxGoalTokens' },
     ])
   })
 
