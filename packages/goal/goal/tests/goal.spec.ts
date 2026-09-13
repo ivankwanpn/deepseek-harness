@@ -6,13 +6,32 @@ import { createUserMessage, HarnessError } from '@deepseek-ai/dsh-llm'
 import SessionStore, { Session, SessionId, type UserMessage } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import GoalService, {
+  GOAL_SETTINGS_NAMESPACE,
   GoalError,
   GoalId,
   decodeGoalChange,
   foldGoal,
 } from '@deepseek-ai/dsh-goal'
 import type { GoalChangeMeta, GoalRef, GoalSnapshotChangeMeta } from '@deepseek-ai/dsh-goal'
+import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
+import * as SessionStats from '@deepseek-ai/dsh-session-stats'
+import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import { createInboxStub } from '@deepseek-ai/dsh-agent-loop-testkit'
+
+/** Writable memory provider for the goal settings section spec. */
+class MemorySettings extends SettingsProvider {
+  readonly doc: Record<string, unknown> = {}
+  readonly writable = true
+
+  protected load(): Promise<Record<string, unknown>> {
+    return Promise.resolve(structuredClone(this.doc))
+  }
+
+  protected persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
+    this.doc[ns] = structuredClone(section)
+    return Promise.resolve()
+  }
+}
 
 interface StubAgent {
   agent: Agent
@@ -180,6 +199,45 @@ describe('GoalService creation and replay', () => {
     await expect(ctx.plugin(GoalService, { defaultMaxGoalRounds: -1 })).rejects.toThrow(expect.objectContaining({
       code: 'GOAL_INVALID_MAX_ROUNDS',
     }))
+  })
+
+  /** Mount the domain over the memory settings provider, whose section can be written at runtime. */
+  async function settingsHarness(config: { defaultMaxGoalRounds?: number } = {}) {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(MemorySettings)
+    await ctx.plugin(SessionStats)
+    await ctx.plugin(TokenMeter)
+    await ctx.plugin(GoalService, config)
+    const stub = stubAgent(`goal-settings-${Math.random()}`, undefined, ctx)
+    ctx.agents.register(stub.agent)
+    return { ctx, ...stub }
+  }
+
+  it('applies the defaults a registered settings section carries', async () => {
+    const first = await settingsHarness({ defaultMaxGoalRounds: 17 })
+    expect(first.ctx.goals.create(first.agent, { objective: 'from composition' }))
+      .toMatchObject({ maxGoalRounds: 17, maxGoalTokens: null })
+
+    await first.ctx.settings.update(GOAL_SETTINGS_NAMESPACE, {
+      defaultMaxGoalRounds: 3,
+      defaultMaxGoalTokens: 500,
+    })
+
+    // The deployment's own composed entry is now the base layer under the user
+    // section, so a later create picks up the change without a reload.
+    const second = stubAgent(`goal-settings-${Math.random()}`, undefined, first.ctx)
+    first.ctx.agents.register(second.agent)
+    expect(first.ctx.goals.create(second.agent, { objective: 'from settings' }))
+      .toMatchObject({ maxGoalRounds: 3, maxGoalTokens: 500 })
+  })
+
+  it('refuses a stored default that no create could act on', async () => {
+    const { ctx } = await settingsHarness({ defaultMaxGoalRounds: 17 })
+    await expect(ctx.settings.update(GOAL_SETTINGS_NAMESPACE, { defaultMaxGoalRounds: 2 ** 53 }))
+      .rejects.toThrow(expect.objectContaining({ code: 'GOAL_INVALID_MAX_ROUNDS' }))
   })
 
   it('restores a seeded goal and rounds with activation disarmed', async () => {
