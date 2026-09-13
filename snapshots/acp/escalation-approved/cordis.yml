@@ -78,6 +78,12 @@
   config:
     cwd: !!js process.cwd()
 
+# The goal scenarios need a two-round cap to reach the round limit inside a
+# recorded replay. The deployment owns that cap: `create_goal` no longer names one.
+- id: goal
+  config:
+    defaultMaxGoalRounds: 2
+
 - insert:
     - id: hooks-claude-code
       name: '@deepseek-ai/dsh-hooks-claude-code'

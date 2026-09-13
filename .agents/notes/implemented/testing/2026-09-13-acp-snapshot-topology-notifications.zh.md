@@ -10,7 +10,7 @@ ACP 在有序输出链之外解析模型选项。发现若在关闭开始前完�
 
 ## 决策
 
-[ACP suite](../../../../packages/test-support/session-snapshot/src/suite.ts)对实际与已提交 stdout 应用相同投影：仅当帧是没有 `id` 的 JSON-RPC 2.0 通知、方法为 `session/update`、且 `params.update.sessionUpdate` 等于 `config_option_update` 时移除该帧。解析检查协议字段，绝不匹配用户或工具文本中的子串。其他帧保留既有 stdout 规范化后的字节；配置响应、带关联标识的请求、转录更新与持久化 Session 比较保留各自断言。无效 JSON 仍会失败。
+[ACP suite](../../../../packages/test-support/session-snapshot/src/suite.ts)对实际与已提交 stdout 应用相同投影：仅当帧是没有 `id` 的 JSON-RPC 2.0 通知、方法为 `session/update`、且 `params.update.sessionUpdate` 等于 `config_option_update` 时移除该帧。[goal 生命周期验证](../../../../apps/cli/tests/profiles/acp/tests/goal.expected.e2e.ts) 在 suite 之外拥有 goal 专属规范化，并对它的两个 stdout fixture 应用同一投影。解析检查协议字段，绝不匹配用户或工具文本中的子串。其他帧保留既有 stdout 规范化后的字节；配置响应、带关联标识的请求、转录更新与持久化 Session 比较保留各自断言。无效 JSON 仍会失败。
 
 对于稳定帧序列 S，无论在其中插入多少此类通知，投影都返回 S。通知数量、位置、发现延迟及其与关闭竞态的结果都无法影响投影后的比较。这证明了针对该变化来源的确定性，并不声称 lane 不可能发生无关失败。Record 和 refresh 写入投影后的 stdout；replay 在内存中投影已提交 fixture，不重写它们。
 

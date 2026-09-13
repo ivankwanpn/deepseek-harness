@@ -21,6 +21,10 @@
     root: './.sessions'
     compression: none
 
+- id: goal
+  config:
+    defaultMaxGoalRounds: 7
+
 - insert:
     - id: llm-replay
       name: '@deepseek-ai/dsh-llm-replay'

@@ -67,12 +67,10 @@ interface ToolArgsMap {
     /** Required with sandbox_permissions: one sentence for the user explaining why this exact command needs the wider access. */
     justification?: string;
   } & Record<string, JsonValue>;
-  /** Create one persisted same-session completion goal when the current direct human request is a long-running objective that should continue across autonomous goal rounds. You may infer that intent without requiring the user to say "create a goal". Do not use this for trivial single-turn work. Execution rejects non-human and subagent authority. */
+  /** Create one persisted same-session completion goal when the current direct human request is a long-running objective that should continue across autonomous goal rounds. You may infer that intent without requiring the user to say "create a goal". Do not use this for trivial single-turn work. The deployment owns how many rounds and how much resource the goal may spend; name a budget only when the human asks for one. Execution rejects non-human and subagent authority. */
   create_goal: {
     /** The concrete completion objective inferred from the direct human request. */
     objective: string;
-    /** Optional positive safe-integer limit on automatic continuation rounds. */
-    max_goal_rounds?: number;
     /** Optional positive safe-integer ceiling on provider tokens spent under this goal. Omit it to inherit the deployment default. */
     max_goal_tokens?: number;
     /** Optional positive safe-integer ceiling, in milliseconds, on model-and-tool time spent under this goal. Omit it to inherit the deployment default. */

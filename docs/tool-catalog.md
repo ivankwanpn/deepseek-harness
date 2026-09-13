@@ -1052,7 +1052,7 @@ The six terminal tools are opt-in and complement one-shot shell/filesystem tools
 
 ### `create_goal`
 
-Create one persisted same-session completion goal when the current direct human request is a long-running objective that should continue across autonomous goal rounds. You may infer that intent without requiring the user to say "create a goal". Do not use this for trivial single-turn work. Execution rejects non-human and subagent authority.
+Create one persisted same-session completion goal when the current direct human request is a long-running objective that should continue across autonomous goal rounds. You may infer that intent without requiring the user to say "create a goal". Do not use this for trivial single-turn work. The deployment owns how many rounds and how much resource the goal may spend; name a budget only when the human asks for one. Execution rejects non-human and subagent authority.
 
 ```json
 {
@@ -1061,10 +1061,6 @@ Create one persisted same-session completion goal when the current direct human 
     "objective": {
       "type": "string",
       "description": "The concrete completion objective inferred from the direct human request."
-    },
-    "max_goal_rounds": {
-      "type": "number",
-      "description": "Optional positive safe-integer limit on automatic continuation rounds."
     },
     "max_goal_tokens": {
       "type": "number",

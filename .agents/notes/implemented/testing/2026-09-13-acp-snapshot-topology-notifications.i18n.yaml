@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/testing/2026-09-13-acp-snapshot-topology-notifications.md
-2026-09-13-acp-snapshot-topology-notifications.md: 7baaa7154ac418e996f609a48f1a2b57bc882850
-2026-09-13-acp-snapshot-topology-notifications.zh.md: e89645904749c603c41931c92cc554737aced060
+2026-09-13-acp-snapshot-topology-notifications.md: 5ed3d97a56d403f2d88fdb3a35c2637f3e7916d7
+2026-09-13-acp-snapshot-topology-notifications.zh.md: 7ffcac7f0f2e65df0970173bc87b5e189f60fe20
