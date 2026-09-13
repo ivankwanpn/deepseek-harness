@@ -21,6 +21,9 @@ import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 // runtime dependency, and an unmetered deployment still stores unbudgeted goals.
 import type {} from '@deepseek-ai/dsh-token-meter'
 import type {} from '@deepseek-ai/dsh-session-stats'
+// Type-only: the optional settings service, which turns these defaults into a
+// runtime-editable section. Without a provider the composed entry stays in force.
+import type {} from '@deepseek-ai/dsh-settings'
 import {
   applyGoalEvent,
   goalChangeRef,
@@ -197,6 +200,9 @@ export interface Config {
   defaultMaxGoalWorkMs?: number
 }
 
+/** Settings namespace carrying the deployment defaults for goal creation. */
+export const GOAL_SETTINGS_NAMESPACE = 'goal'
+
 /** Resolved defaults. */
 export interface ResolvedConfig {
   /** Validated positive safe-integer default round cap. */
@@ -306,6 +312,15 @@ function resolveObjective(value: string): string {
   return value.trim()
 }
 
+/** Materialize one configuration section into validated deployment defaults. */
+function resolveDefaults(config: Config): ResolvedConfig {
+  return {
+    defaultMaxGoalRounds: resolveMaxGoalRounds(config.defaultMaxGoalRounds ?? 256),
+    defaultMaxGoalTokens: resolveBudget(config.defaultMaxGoalTokens, null, 'defaultMaxGoalTokens'),
+    defaultMaxGoalWorkMs: resolveBudget(config.defaultMaxGoalWorkMs, null, 'defaultMaxGoalWorkMs'),
+  }
+}
+
 /** Materialize deployment defaults and validate one create request. */
 function resolveCreateGoal(request: CreateGoalRequest, defaults: ResolvedConfig): ResolvedCreateGoal {
   return {
@@ -343,16 +358,25 @@ export class GoalService extends TypertRemoteService {
     defaultMaxGoalWorkMs: z.number().step(1).min(1),
   })
 
-  private readonly resolved: ResolvedConfig
+  private source: () => Config
   private readonly runtimeStates = new WeakMap<Session, GoalRuntimeState>()
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, 'goals')
-    this.resolved = {
-      defaultMaxGoalRounds: resolveMaxGoalRounds(config.defaultMaxGoalRounds ?? 256),
-      defaultMaxGoalTokens: resolveBudget(config.defaultMaxGoalTokens, null, 'defaultMaxGoalTokens'),
-      defaultMaxGoalWorkMs: resolveBudget(config.defaultMaxGoalWorkMs, null, 'defaultMaxGoalWorkMs'),
-    }
+    const entry = config
+    this.source = () => entry
+    // Fail loud at load on an unusable composition entry, before any create.
+    this.defaults()
+    ctx.inject(['settings'], (settingsCtx) => {
+      settingsCtx.settings.installSection(ctx, GOAL_SETTINGS_NAMESPACE, GoalService.Config, entry, {
+        setSource: (current) => { this.source = current },
+        // Nothing is memoized: every create reads the source, so a committed
+        // change needs no re-derivation here.
+        onChange: () => {},
+        // A section every create would refuse must not commit in the first place.
+        validate: (value) => { resolveDefaults(value) },
+      })
+    })
     ctx.on('agent/session-start', ({ agent }) => {
       this.setActivation(agent.session, 'disarmed')
     })
@@ -366,6 +390,14 @@ export class GoalService extends TypertRemoteService {
         : 'disarmed'
       this.setActivation(session, activation)
     })
+  }
+
+  /**
+   * Resolve the deployment defaults from the active configuration source.
+   * @returns validated defaults for one create request.
+   */
+  private defaults(): ResolvedConfig {
+    return resolveDefaults(this.source())
   }
 
   /**
@@ -402,7 +434,7 @@ export class GoalService extends TypertRemoteService {
    * @returns the created live view.
    */
   create(agent: Agent, request: CreateGoalRequest): GoalView {
-    const spec = resolveCreateGoal(request, this.resolved)
+    const spec = resolveCreateGoal(request, this.defaults())
     const [state, runtime] = this.prepareMutation(agent)
     const current = state?.goal
     if (current !== undefined && current.phase !== 'complete') {

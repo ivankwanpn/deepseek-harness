@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The Web GUI goal surface shows both the durable goal state and its current process-local activation, and lets users edit, pause, resume, or clear the goal; rejected changes appear inline. It displays durable `/goal` runs as `Command input` bubbles so commands from users or the model remain visible after reload. Goal creation remains outside this package. Shipped Web presets other than `minimal` make `/goal` available to agents.
+The Web GUI goal surface shows both the durable goal state and its current process-local activation, and lets users edit, pause, resume, or clear the goal; rejected changes appear inline. It displays durable `/goal` runs as `Command input` bubbles so commands from users or the model remain visible after reload. It also contributes the Goal limits row that edits the deployment defaults for new goals. Goal creation remains outside this package. Shipped Web presets other than `minimal` make `/goal` available to agents.
 
 ## Table of Contents
 
@@ -30,6 +30,10 @@ Mount this plugin alongside `ui-conversation` and the goal domain package; the s
 ### The command-input bubble
 
 Each durable `/goal` run projects as a right-aligned user-style bubble labeled `Command input` (or `指令输入`), rendered before the generic command result row; the leading `/goal` token renders as a command reference chip in the code face through ui-primitives `projectUserText`, and the objective stays plain body text. It carries no timestamp, copy, or branch actions, and reloading reconstructs it from the run.
+
+### Goal limits in Settings
+
+Wherever a settings transport and the General section are mounted, this plugin also contributes a Goal limits row that edits the three `goal` deployment defaults the domain resolves ([runtime defaults](../../goal/goal/README.md#runtime-defaults)): the round cap, the token budget, and the active-work budget. A field writes on each accepted entry, and emptying it clears the override so the field re-inherits the deployment's composition entry.
 
 ### Failures
 

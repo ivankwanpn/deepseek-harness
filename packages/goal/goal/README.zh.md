@@ -51,6 +51,11 @@ goal 适合一个需要跨自动 Goal Round 持续的长期完成目标——例
 
 `defaultMaxGoalRounds` 必须是正的安全整数；指定了自身上限的 create 请求会覆盖它。两个预算默认值必须是正的安全整数，且任一留空都会让其管辖的每个 goal 保持无上限。指定预算要求已注册对应的记账投影——token 用 [`@deepseek-ai/dsh-token-meter`](../../llm/token-meter/README.zh.md)，活跃工作用 [`@deepseek-ai/dsh-session-stats`](../../session/session-stats/README.zh.md)——未注册时指定预算的 create 或 edit 会被拒绝。base bundle 挂载 `token-meter`，只有 `web-app` 挂载 `session-stats`，因此无头组合可以为 token 设预算，但要为活跃工作设预算必须先显式加入 `session-stats` 条目。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-goal)是每个受支持字段的穷尽式真源。
 
+<a id="runtime-defaults"></a>
+### 运行时默认值
+
+这三个字段同时就是 `goal` settings namespace（[`@deepseek-ai/dsh-settings`](../../settings/settings/README.zh.md)），并以这份组合条目作为 base 层。部署可以挂载设置提供方，让用户或某个配置界面在不改 `cordis.yml`、也不重启的前提下修改这些上限；每次 create 都读取当前解析出的 section，因此已提交的变更约束的是下一个 goal，而不是下一个进程。清空某个字段会重新继承组合条目，而该 section 自身的 schema 加上写入时的检查会拒绝任何 create 无法执行的值。没有设置提供方时组合条目继续生效，其余行为不变。
+
 ### 会话投影
 
 `GoalService` 要求组合提供 `ctx.sessionProjections`（[`@deepseek-ai/dsh-session-projection`](../../session/session-projection/README.zh.md)），并在启动时注册 `goal` 投影单元；未组合投影注册表的组合无法激活 `ctx.goals`。该单元版本为 7，其宿主状态保留最新的有效当前 goal、所有曾使用的 goal id、第一次严格回放失败，以及每个当前 goal 的创建时记账基线。客户端视图提供当前 goal；首次 create 前与 clear tombstone 后为 `null`。该键同时合并到 `SessionProjectionStateMap` 与 `SessionProjectionMap`；载体通过历史尾页和 `session/projection` 推送帧提供客户端值。

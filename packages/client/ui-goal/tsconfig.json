@@ -33,6 +33,12 @@
       "path": "../ui-session"
     },
     {
+      "path": "../store"
+    },
+    {
+      "path": "../ui-settings"
+    },
+    {
       "path": "../ui-primitives"
     },
     {
