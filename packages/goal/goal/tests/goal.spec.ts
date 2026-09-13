@@ -179,6 +179,17 @@ describe('GoalService creation and replay', () => {
     expect(ctx.goals.create(agent, { objective: 'x' }).maxGoalRounds).toBeNull()
   })
 
+  it('clears a deployment round cap through an explicit null', async () => {
+    const create = await harness({ defaultMaxGoalRounds: 3 })
+    expect(create.ctx.goals.create(create.agent, { objective: 'cleared', maxGoalRounds: null }).maxGoalRounds)
+      .toBeNull()
+
+    const edit = await harness({ defaultMaxGoalRounds: 3 })
+    const capped = edit.ctx.goals.create(edit.agent, { objective: 'capped' })
+    expect(capped.maxGoalRounds).toBe(3)
+    expect(edit.ctx.goals.edit(edit.agent, capped, { maxGoalRounds: null }).maxGoalRounds).toBeNull()
+  })
+
   it('also resolves the default when constructed directly without Cordis config normalization', async () => {
     const ctx = new Context()
     await ctx.plugin(AgentRegistry)
