@@ -120,7 +120,7 @@ class CreateGoalOutput2Goal(TypedDict):
     objective: str
     phase: Literal["active", "paused", "blocked", "complete"]
     roundsStarted: int
-    maxGoalRounds: int
+    maxGoalRounds: NotRequired[int]
     maxGoalTokens: NotRequired[int]
     maxGoalWorkMs: NotRequired[int]
     tokensUsed: NotRequired[int]
@@ -173,7 +173,7 @@ class GetGoalOutput2Goal(TypedDict):
     objective: str
     phase: Literal["active", "paused", "blocked", "complete"]
     roundsStarted: int
-    maxGoalRounds: int
+    maxGoalRounds: NotRequired[int]
     maxGoalTokens: NotRequired[int]
     maxGoalWorkMs: NotRequired[int]
     tokensUsed: NotRequired[int]
@@ -476,7 +476,7 @@ class UpdateGoalOutput2Goal(TypedDict):
     objective: str
     phase: Literal["active", "paused", "blocked", "complete"]
     roundsStarted: int
-    maxGoalRounds: int
+    maxGoalRounds: NotRequired[int]
     maxGoalTokens: NotRequired[int]
     maxGoalWorkMs: NotRequired[int]
     tokensUsed: NotRequired[int]

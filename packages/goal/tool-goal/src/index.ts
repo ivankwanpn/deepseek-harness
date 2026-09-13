@@ -65,7 +65,7 @@ type GoalToolValue =
       objective: string
       phase: GoalView['phase']
       roundsStarted: number
-      maxGoalRounds: number
+      maxGoalRounds?: number
       maxGoalTokens?: number
       maxGoalWorkMs?: number
       tokensUsed?: number
@@ -99,7 +99,7 @@ const GOAL_VALUE_SCHEMA = {
             objective: { type: 'string', required: true },
             phase: { type: 'string', required: true, enum: ['active', 'paused', 'blocked', 'complete'] },
             roundsStarted: { type: 'integer', required: true },
-            maxGoalRounds: { type: 'integer', required: true },
+            maxGoalRounds: { type: 'integer' },
             maxGoalTokens: { type: 'integer' },
             maxGoalWorkMs: { type: 'integer' },
             tokensUsed: { type: 'integer' },
@@ -179,7 +179,7 @@ function goalValue(goal: GoalView | undefined): GoalToolValue {
       objective: goal.objective,
       phase: goal.phase,
       roundsStarted: goal.roundsStarted,
-      maxGoalRounds: goal.maxGoalRounds,
+      ...goal.maxGoalRounds === null ? {} : { maxGoalRounds: goal.maxGoalRounds },
       ...goal.maxGoalTokens === null ? {} : { maxGoalTokens: goal.maxGoalTokens },
       ...goal.maxGoalWorkMs === null ? {} : { maxGoalWorkMs: goal.maxGoalWorkMs },
       ...goal.tokensUsed === null ? {} : { tokensUsed: goal.tokensUsed },

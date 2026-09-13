@@ -2,7 +2,7 @@
 
 import { isDeepStrictEqual } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
-import { foldGoal, type FoldedGoal, type GoalMessageSource, type GoalView } from '@deepseek-ai/dsh-goal'
+import { foldGoal, roundWithinCap, type FoldedGoal, type GoalMessageSource, type GoalView } from '@deepseek-ai/dsh-goal'
 import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { renderGoalRoundPrompt } from './prompt.ts'
@@ -30,7 +30,7 @@ function goalView(folded: FoldedGoal, source: GoalMessageSource, fail: Invariant
   const goal = folded.goal
   if (goal === undefined || folded.createdAt === undefined || folded.updatedAt === undefined
     || goal.phase !== 'active' || goal.id !== source.goalId || goal.revision !== source.revision
-    || source.round !== folded.roundsStarted + 1 || source.round > goal.maxGoalRounds) {
+    || source.round !== folded.roundsStarted + 1 || !roundWithinCap(goal, source.round)) {
     return fail(`goal round ${source.round} cannot be reconstructed from the preceding durable goal state`)
   }
   return {

@@ -307,7 +307,7 @@ interface ToolOutputMap {
       objective: string;
       phase: "active" | "paused" | "blocked" | "complete";
       roundsStarted: number;
-      maxGoalRounds: number;
+      maxGoalRounds?: number;
       maxGoalTokens?: number;
       maxGoalWorkMs?: number;
       tokensUsed?: number;
@@ -337,7 +337,7 @@ interface ToolOutputMap {
       objective: string;
       phase: "active" | "paused" | "blocked" | "complete";
       roundsStarted: number;
-      maxGoalRounds: number;
+      maxGoalRounds?: number;
       maxGoalTokens?: number;
       maxGoalWorkMs?: number;
       tokensUsed?: number;
@@ -500,7 +500,7 @@ interface ToolOutputMap {
       objective: string;
       phase: "active" | "paused" | "blocked" | "complete";
       roundsStarted: number;
-      maxGoalRounds: number;
+      maxGoalRounds?: number;
       maxGoalTokens?: number;
       maxGoalWorkMs?: number;
       tokensUsed?: number;

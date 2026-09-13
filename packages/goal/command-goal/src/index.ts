@@ -90,6 +90,15 @@ function budgetLines(goal: GoalView): string[] {
   return lines
 }
 
+/**
+ * Render the human-facing round line for one goal.
+ * @param goal - current view.
+ * @returns the admitted count against a named cap, or alone while unbounded.
+ */
+function roundsLabel(goal: GoalView): string {
+  return goal.maxGoalRounds === null ? String(goal.roundsStarted) : `${goal.roundsStarted}/${goal.maxGoalRounds}`
+}
+
 /** Render direct UI output without exposing compare-and-set internals. */
 function renderGoal(title: string, goal: GoalView): CommandResult {
   const reason = goal.phase === 'blocked' ? goal.blockedReason : undefined
@@ -103,7 +112,7 @@ function renderGoal(title: string, goal: GoalView): CommandResult {
       `Status: ${phaseLabel(goal.phase)}`,
       ...blocker,
       `Objective: ${goal.objective}`,
-      `Rounds: ${goal.roundsStarted}/${goal.maxGoalRounds}`,
+      `Rounds: ${roundsLabel(goal)}`,
       ...budgetLines(goal),
       `Activation: ${goal.activation}`,
       '',

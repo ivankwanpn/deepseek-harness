@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-goal` 让一个长期完成目标在多轮、会话恢复、fork 与进程重启后持续存在。用户与 agent（智能体）可以 create、edit、pause、resume、complete、block 或 clear 该目标；比较并设置的更新会拒绝陈旧视图。可配置的 Round 上限（默认 256）约束续行，可选的 token 与活跃工作预算则在已花费的工作上停止续行；被阻塞的 goal 会保留稳定的策略代码和面向人的说明。本包存储 goal 状态但不调度工作，续行权限是进程本地的而非持久状态。单个目标需要横跨多轮时选择本包；常规单轮工作或并行目标不要使用。
+`dsh-goal` 让一个长期完成目标在多轮、会话恢复、fork 与进程重启后持续存在。用户与 agent（智能体）可以 create、edit、pause、resume、complete、block 或 clear 该目标；比较并设置的更新会拒绝陈旧视图。可选的 token 与活跃工作预算在已花费的工作上停止续行，Round 上限则可以在没有计量器时充当约束；被阻塞的 goal 会保留稳定的策略代码和面向人的说明。本包存储 goal 状态但不调度工作，续行权限是进程本地的而非持久状态。单个目标需要横跨多轮时选择本包；常规单轮工作或并行目标不要使用。
 
 ## 目录
 
@@ -33,23 +33,23 @@ goal 适合一个需要跨自动 Goal Round 持续的长期完成目标——例
 
 ### 配置服务
 
-通过组合配置项加载本包；部署选择是默认 Round 上限、token 上限与活跃工作上限，应用于未自行指定它们的 create。
+通过组合配置项加载本包；部署选择是默认 Round 上限、token 上限与活跃工作上限，应用于未自行指定它们的 create。三者都可以省略：此时该 goal 不带该类上限。
 
 ```yaml
 - name: '@deepseek-ai/dsh-goal'
   config:
-    defaultMaxGoalRounds: 256
+    defaultMaxGoalRounds: 1000
     defaultMaxGoalTokens: 2000000
     defaultMaxGoalWorkMs: 3600000
 ```
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `defaultMaxGoalRounds` | `256` | 当 create 请求省略上限时应用的 Round 上限 |
+| `defaultMaxGoalRounds` | 无 | 当 create 请求省略上限时应用的 Round 上限；留空则续行不受轮次约束 |
 | `defaultMaxGoalTokens` | 无 | 当 create 请求省略上限时应用的提供方 token 上限 |
 | `defaultMaxGoalWorkMs` | 无 | 当 create 请求省略上限时应用的模型与工具活跃毫秒上限 |
 
-`defaultMaxGoalRounds` 必须是正的安全整数；指定了自身上限的 create 请求会覆盖它。两个预算默认值必须是正的安全整数，且任一留空都会让其管辖的每个 goal 保持无上限。指定预算要求已注册对应的记账投影——token 用 [`@deepseek-ai/dsh-token-meter`](../../llm/token-meter/README.zh.md)，活跃工作用 [`@deepseek-ai/dsh-session-stats`](../../session/session-stats/README.zh.md)——未注册时指定预算的 create 或 edit 会被拒绝。base bundle 挂载 `token-meter`，只有 `web-app` 挂载 `session-stats`，因此无头组合可以为 token 设预算，但要为活跃工作设预算必须先显式加入 `session-stats` 条目。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-goal)是每个受支持字段的穷尽式真源。
+`defaultMaxGoalRounds` 必须是正的安全整数；指定了自身上限的 create 请求会覆盖它，指定 `null` 则清除它。两个预算默认值必须是正的安全整数，且任一留空都会让其管辖的每个 goal 保持无上限。指定预算要求已注册对应的记账投影——token 用 [`@deepseek-ai/dsh-token-meter`](../../llm/token-meter/README.zh.md)，活跃工作用 [`@deepseek-ai/dsh-session-stats`](../../session/session-stats/README.zh.md)——未注册时指定预算的 create 或 edit 会被拒绝。base bundle 挂载 `token-meter`，只有 `web-app` 挂载 `session-stats`，因此无头组合可以为 token 设预算，但要为活跃工作设预算必须先显式加入 `session-stats` 条目。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-goal)是每个受支持字段的穷尽式真源。
 
 <a id="runtime-defaults"></a>
 ### 运行时默认值

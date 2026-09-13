@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-goal` lets one long-running completion objective persist across turns, session resume, fork, and process restarts. Users and agents can create, edit, pause, resume, complete, block, or clear it; compare-and-set updates reject stale views. A configurable round cap (256 by default) bounds continuation, and optional token and active-work budgets stop it on work spent; blocked goals retain a stable policy code with a human-readable explanation. The package stores goal state but does not schedule work, and continuation permission remains process-local rather than durable. Choose it for one objective spanning many turns; skip it for routine single-turn work or parallel objectives.
+`dsh-goal` lets one long-running completion objective persist across turns, session resume, fork, and process restarts. Users and agents can create, edit, pause, resume, complete, block, or clear it; compare-and-set updates reject stale views. Optional token and active-work budgets stop it on work actually spent, and a round cap can bound it without a meter; blocked goals keep a stable policy code and a human-readable explanation. The package stores goal state but does not schedule work, and continuation permission remains process-local rather than durable. Choose it for one objective spanning many turns; skip it for routine single-turn work or parallel objectives.
 
 ## Table of Contents
 
@@ -33,23 +33,23 @@ A goal suits one long-running completion objective that should continue across a
 
 ### Set up the service
 
-Load the package with a composition entry; the deployment choices are the default round cap, token ceiling, and active-work ceiling applied to creates that do not name their own.
+Load the package with a composition entry; the deployment choices are the default round cap, token ceiling, and active-work ceiling applied to creates that do not name their own. Every one of them may be left out: a goal then carries no cap of that kind.
 
 ```yaml
 - name: '@deepseek-ai/dsh-goal'
   config:
-    defaultMaxGoalRounds: 256
+    defaultMaxGoalRounds: 1000
     defaultMaxGoalTokens: 2000000
     defaultMaxGoalWorkMs: 3600000
 ```
 
 | Field | Default | Meaning |
 |---|---|---|
-| `defaultMaxGoalRounds` | `256` | Round cap applied when a create request omits its own |
+| `defaultMaxGoalRounds` | none | Round cap applied when a create request omits its own; unset leaves continuation unbounded by rounds |
 | `defaultMaxGoalTokens` | none | Provider-token ceiling applied when a create request omits its own |
 | `defaultMaxGoalWorkMs` | none | Active model-and-tool millisecond ceiling applied when a create request omits its own |
 
-`defaultMaxGoalRounds` must be a positive safe integer; a create request that names its own cap overrides it. The two budget defaults must be positive safe integers, and leaving either unset keeps every goal it governs unbounded. Naming a budget requires the matching accounting projection to be registered — [`@deepseek-ai/dsh-token-meter`](../../llm/token-meter/README.md) for tokens and [`@deepseek-ai/dsh-session-stats`](../../session/session-stats/README.md) for active work — and a create or edit that names one without it is refused. The base bundle mounts `token-meter`; only `web-app` mounts `session-stats`, so a headless composition can budget tokens and needs an explicit `session-stats` entry before it can budget active work. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-goal) is the exhaustive source for every accepted field.
+`defaultMaxGoalRounds` must be a positive safe integer; a create request that names its own cap overrides it, and a create request that names `null` clears it. The two budget defaults must be positive safe integers, and leaving either unset keeps every goal it governs unbounded. Naming a budget requires the matching accounting projection to be registered — [`@deepseek-ai/dsh-token-meter`](../../llm/token-meter/README.md) for tokens and [`@deepseek-ai/dsh-session-stats`](../../session/session-stats/README.md) for active work — and a create or edit that names one without it is refused. The base bundle mounts `token-meter`; only `web-app` mounts `session-stats`, so a headless composition can budget tokens and needs an explicit `session-stats` entry before it can budget active work. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-goal) is the exhaustive source for every accepted field.
 
 <a id="runtime-defaults"></a>
 ### Runtime defaults
