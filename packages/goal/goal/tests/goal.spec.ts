@@ -516,6 +516,8 @@ describe('GoalService mutations', () => {
         objective: 'observe external append',
         phase: 'active',
         maxGoalRounds: 4,
+        maxGoalTokens: null,
+        maxGoalWorkMs: null,
       },
       roundsStarted: created.roundsStarted,
       createdAt: created.createdAt,
@@ -543,6 +545,8 @@ describe('GoalService mutations', () => {
         objective: 'valid prefix',
         phase: 'active',
         maxGoalRounds: 4,
+        maxGoalTokens: null,
+        maxGoalWorkMs: null,
       },
       roundsStarted: 0,
       createdAt: 12,
@@ -551,7 +555,7 @@ describe('GoalService mutations', () => {
     session.append('goal/change', change)
     expect(() => {
       session.append('goal/change', { ...change, operation: 'edit', extra: true } as never)
-    }).toThrow('snapshot change must have exactly')
+    }).toThrow('goal snapshot change has an unknown extra field')
 
     expect(ctx.goals.get(agent)).toMatchObject({ id: change.goal.id, objective: 'valid prefix' })
   })
@@ -569,6 +573,8 @@ describe('goal replay validation', () => {
         objective: 'validate',
         phase: 'active',
         maxGoalRounds: 2,
+        maxGoalTokens: null,
+        maxGoalWorkMs: null,
       },
       roundsStarted: 0,
       createdAt: 10,
@@ -605,6 +611,8 @@ describe('goal replay validation', () => {
           ? { blockedReason: { code: 'test-blocker', message: 'Blocked for replay validation.' } }
           : {},
         maxGoalRounds: current.goal.maxGoalRounds,
+        maxGoalTokens: current.goal.maxGoalTokens,
+        maxGoalWorkMs: current.goal.maxGoalWorkMs,
       },
       updatedAt: current.updatedAt + 1,
       ...overrides,
@@ -662,10 +670,11 @@ describe('goal replay validation', () => {
   it('rejects unsupported versions, operations, and extra top-level fields', () => {
     expect(() => decodeGoalChange({ ...snapshotChange(), version: 2 })).toThrow('unsupported goal change version')
     expect(() => decodeGoalChange({ ...snapshotChange(), operation: 'explode' })).toThrow('operation is invalid')
-    expect(() => decodeGoalChange({ ...snapshotChange(), extra: true })).toThrow('snapshot change must have exactly')
+    expect(() => decodeGoalChange({ ...snapshotChange(), extra: true }))
+      .toThrow('goal snapshot change has an unknown extra field')
     expect(() => decodeGoalChange({
       kind: 'goal/change', version: 1, operation: 'clear', cleared: { id: 'x', revision: 2 }, clearedAt: 1, extra: true,
-    })).toThrow('clear change must have exactly')
+    })).toThrow('goal clear change has an unknown extra field')
   })
 
   it('rejects invalid create and missing-current mutation sequences', () => {
@@ -842,5 +851,123 @@ describe('goal replay validation', () => {
       roundsStarted: 0,
       lastRef: { id: change.goal.id, revision: 2 },
     })
+  })
+
+  it('reads a record written before budgets existed as unbounded with no baseline', () => {
+    const base = snapshotChange()
+    const { maxGoalTokens: _tokens, maxGoalWorkMs: _work, ...legacyGoal } = base.goal
+    const decoded = decodeGoalChange({ ...base, goal: legacyGoal })
+    expect(decoded?.operation).toBe('create')
+    if (decoded === undefined || decoded.operation === 'clear') throw new Error('expected a snapshot change')
+    expect(decoded.goal.maxGoalTokens).toBeNull()
+    expect(decoded.goal.maxGoalWorkMs).toBeNull()
+    expect(decoded.tokensAtCreate).toBeUndefined()
+    // The current writer always emits both ceilings; this payload models one an
+    // older build wrote, which is exactly what the reader must still accept.
+    const legacyChange = { ...base, goal: legacyGoal } as unknown as GoalSnapshotChangeMeta
+    expect(foldGoal(oneChange(legacyChange))).toEqual({
+      goal: { ...legacyGoal, maxGoalTokens: null, maxGoalWorkMs: null },
+      roundsStarted: 0,
+      createdAt: 10,
+      updatedAt: 10,
+      lastRef: { id: base.goal.id, revision: 1 },
+    })
+  })
+
+  it('records the create-time baselines a budget compares against', () => {
+    const change: GoalSnapshotChangeMeta = {
+      ...snapshotChange(),
+      goal: { ...snapshotChange().goal, maxGoalTokens: 500, maxGoalWorkMs: 60_000 },
+      tokensAtCreate: 100,
+      workMsAtCreate: 250,
+    }
+    expect(foldGoal(oneChange(change))).toMatchObject({
+      tokensAtCreate: 100,
+      workMsAtCreate: 250,
+      goal: { maxGoalTokens: 500, maxGoalWorkMs: 60_000 },
+    })
+    const withoutBaselines = { ...change, tokensAtCreate: undefined, workMsAtCreate: undefined }
+    expect(() => decodeGoalChange(withoutBaselines)).toThrow('must also carry its create-time baseline')
+  })
+
+  it('rejects invalid budget ceilings and baselines', () => {
+    const base = snapshotChange()
+    for (const budget of [0, -1, 1.5, 'many']) {
+      expect(() => decodeGoalChange({ ...base, goal: { ...base.goal, maxGoalTokens: budget } })).toThrow()
+      expect(() => decodeGoalChange({ ...base, goal: { ...base.goal, maxGoalWorkMs: budget } })).toThrow()
+    }
+    const budgeted = { ...base, goal: { ...base.goal, maxGoalTokens: 10 } }
+    expect(() => decodeGoalChange({ ...budgeted, tokensAtCreate: -1 })).toThrow('tokensAtCreate')
+    expect(() => decodeGoalChange({ ...budgeted, tokensAtCreate: 1.5 })).toThrow('tokensAtCreate')
+  })
+
+  it('rejects a mutation that replaces a budget or a create-time baseline', () => {
+    const current: GoalSnapshotChangeMeta = {
+      ...snapshotChange(),
+      goal: { ...snapshotChange().goal, maxGoalTokens: 500 },
+      tokensAtCreate: 100,
+    }
+    const session = Session.create(SessionId('budget-preservation'), oneChange(current))
+    const replacedBudget = mutation(current, 'pause', 'paused', {
+      goal: { ...current.goal, revision: current.goal.revision + 1, maxGoalTokens: 900 },
+    })
+    expect(() => foldGoal([...session.snapshotEvents(), ...oneChange(replacedBudget)]))
+      .toThrow('cannot change the objective, round cap, or budgets')
+    const movedBaseline = mutation(current, 'pause', 'paused', { tokensAtCreate: 42 })
+    expect(() => foldGoal([...session.snapshotEvents(), ...oneChange(movedBaseline)]))
+      .toThrow('does not preserve the current counters, baselines, and timestamps')
+  })
+
+  it('reports unmeasured usage and no exhaustion for an unbudgeted goal', async () => {
+    const { ctx, agent } = await harness()
+    const goal = ctx.goals.create(agent, { objective: 'no budget here' })
+    expect(goal).toMatchObject({
+      maxGoalTokens: null,
+      maxGoalWorkMs: null,
+      tokensUsed: null,
+      workMsUsed: null,
+      exhaustedBudget: null,
+    })
+    expect(ctx.goals.get(agent)).toMatchObject({ tokensUsed: null, exhaustedBudget: null })
+  })
+
+  it('refuses a budget the deployment cannot meter', async () => {
+    const { ctx, agent } = await harness()
+    expect(() => ctx.goals.create(agent, { objective: 'metered', maxGoalTokens: 100 }))
+      .toThrow('a token budget requires the tokenUsage projection')
+    expect(() => ctx.goals.create(agent, { objective: 'metered', maxGoalWorkMs: 100 }))
+      .toThrow('an active-work budget requires the sessionStats projection')
+    const created = ctx.goals.create(agent, { objective: 'unbudgeted' })
+    expect(() => ctx.goals.edit(agent, { id: created.id, revision: created.revision }, { maxGoalTokens: 5 }))
+      .toThrow('a token budget requires the tokenUsage projection')
+    expect(() => ctx.goals.edit(agent, { id: created.id, revision: created.revision }, { maxGoalWorkMs: 5 }))
+      .toThrow('an active-work budget requires the sessionStats projection')
+  })
+
+  it('rejects non-positive budget ceilings at the service boundary', async () => {
+    const { ctx, agent } = await harness()
+    expect(() => ctx.goals.create(agent, { objective: 'bad budget', maxGoalTokens: 0 }))
+      .toThrow('maxGoalTokens must be a positive safe integer or null')
+    expect(() => ctx.goals.create(agent, { objective: 'bad budget', maxGoalWorkMs: -2 }))
+      .toThrow('maxGoalWorkMs must be a positive safe integer or null')
+    const created = ctx.goals.create(agent, { objective: 'editable' })
+    expect(() => ctx.goals.edit(agent, { id: created.id, revision: created.revision }, {}))
+      .toThrow('goal edit requires objective, maxGoalRounds, maxGoalTokens, and/or maxGoalWorkMs')
+  })
+
+  it('leaves a goal unbounded when a caller names an explicit null budget', async () => {
+    const { ctx, agent } = await harness()
+    const created = ctx.goals.create(agent, {
+      objective: 'no ceiling at all',
+      maxGoalTokens: null,
+      maxGoalWorkMs: null,
+    })
+    expect(created).toMatchObject({ maxGoalTokens: null, maxGoalWorkMs: null, exhaustedBudget: null })
+    const cleared = ctx.goals.edit(
+      agent,
+      { id: created.id, revision: created.revision },
+      { maxGoalTokens: null, maxGoalWorkMs: null },
+    )
+    expect(cleared).toMatchObject({ maxGoalTokens: null, maxGoalWorkMs: null })
   })
 })

@@ -72,6 +72,19 @@ function renderThrown(value: unknown): string {
   return value instanceof Error ? value.message : String(value)
 }
 
+/**
+ * Render the blocker explanation for a goal whose resource budget is spent.
+ * @param goal - current view whose `exhaustedBudget` is set.
+ * @returns one sentence naming the ceiling, the spend, and the remedy.
+ */
+function budgetLimitMessage(goal: GoalView): string {
+  return goal.exhaustedBudget === 'tokens'
+    ? `Goal reached its token budget of ${goal.maxGoalTokens} tokens after spending ${goal.tokensUsed}; `
+      + 'raise max_goal_tokens before continuing.'
+    : `Goal reached its active-work budget of ${goal.maxGoalWorkMs} ms after spending ${goal.workMsUsed} ms of `
+      + 'model and tool time; raise max_goal_work_ms before continuing.'
+}
+
 /** Install automatic same-session continuation and its race fences. */
 export function apply(ctx: Context): void {
   const states = new Map<Agent, DriverState>()
@@ -170,12 +183,30 @@ export function apply(ctx: Context): void {
       })
       return
     }
+    // A spent budget stops continuation before another round is queued, so an
+    // unbounded round cap cannot keep spending against an exhausted ceiling.
+    if (goal.exhaustedBudget !== null) {
+      ctx.goals.block(agent, goalRef(goal), {
+        code: 'budget-limit',
+        message: budgetLimitMessage(goal),
+      })
+      return
+    }
 
     const round = goal.roundsStarted + 1
     const content = renderGoalRoundPrompt(goal, round)
     const message = createUserMessage({
       content,
-      source: { kind: 'goal', goalId: goal.id, revision: goal.revision, round },
+      // The prompt renders this spend, so it is recorded with the round it
+      // describes rather than recomputed by readers that replay the log.
+      source: {
+        kind: 'goal',
+        goalId: goal.id,
+        revision: goal.revision,
+        round,
+        ...goal.tokensUsed === null ? {} : { tokensUsed: goal.tokensUsed },
+        ...goal.workMsUsed === null ? {} : { workMsUsed: goal.workMsUsed },
+      },
     })
     const reservation: RoundAttempt = {
       goalId: goal.id,

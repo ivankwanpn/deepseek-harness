@@ -20,6 +20,8 @@ function makeGoal(over: Partial<GoalSnapshot> = {}): GoalSnapshot {
     objective: 'Ship the redesign',
     phase: 'active',
     maxGoalRounds: 4,
+    maxGoalTokens: null,
+    maxGoalWorkMs: null,
     ...over,
   }
 }

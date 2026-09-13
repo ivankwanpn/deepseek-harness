@@ -18,6 +18,8 @@ function cloneState(state: GoalFoldState): GoalFoldState {
   return {
     goal: state.goal,
     roundsStarted: state.roundsStarted,
+    tokensAtCreate: state.tokensAtCreate,
+    workMsAtCreate: state.workMsAtCreate,
     createdAt: state.createdAt,
     updatedAt: state.updatedAt,
     lastRef: state.lastRef,

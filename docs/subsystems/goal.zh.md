@@ -42,6 +42,11 @@ interface GoalBlockReason {
 ```
 
 ```ts type-equiv
+/** Resource budget whose exhaustion stops automatic continuation for one goal. */
+type GoalBudgetKind = 'tokens' | 'work'
+```
+
+```ts type-equiv
 /** Full durable state written by every non-clear goal mutation. */
 interface GoalSnapshot extends GoalRef {
   /** Human-requested completion objective. */
@@ -52,6 +57,10 @@ interface GoalSnapshot extends GoalRef {
   readonly blockedReason?: GoalBlockReason
   /** Total admitted goal-round cap. */
   readonly maxGoalRounds: number
+  /** Provider-token ceiling admitted under this goal, or null while unbounded. */
+  readonly maxGoalTokens: number | null
+  /** Active model-and-tool millisecond ceiling admitted under this goal, or null while unbounded. */
+  readonly maxGoalWorkMs: number | null
 }
 ```
 
@@ -60,6 +69,12 @@ interface GoalSnapshot extends GoalRef {
 interface GoalView extends GoalSnapshot {
   /** Highest admitted round number for this goal. */
   readonly roundsStarted: number
+  /** Provider tokens spent since this goal was created, or null when no baseline was recorded. */
+  readonly tokensUsed: number | null
+  /** Active model-and-tool milliseconds spent since this goal was created, or null when no baseline was recorded. */
+  readonly workMsUsed: number | null
+  /** First budget without remaining capacity in {@link GoalBudgetKind} order, or null while both retain it. */
+  readonly exhaustedBudget: GoalBudgetKind | null
   /** Epoch milliseconds of the create mutation. */
   readonly createdAt: number
   /** Epoch milliseconds of the latest mutation. */
@@ -100,6 +115,14 @@ interface GoalSnapshotChangeMeta {
   readonly operation: Exclude<GoalOperation, 'clear'>
   readonly goal: GoalSnapshot
   readonly roundsStarted: number
+  /**
+   * Cumulative session token total at the create mutation, retained unchanged
+   * by every later mutation. Absent exactly on goals created before budgets
+   * existed; a change that names a token budget must carry it.
+   */
+  readonly tokensAtCreate?: number
+  /** Cumulative session active model-and-tool milliseconds at the create mutation. */
+  readonly workMsAtCreate?: number
   readonly createdAt: number
   readonly updatedAt: number
 }
@@ -126,6 +149,15 @@ interface GoalMessageSource {
   readonly revision: number
   /** Positive admitted continuation round. */
   readonly round: number
+  /**
+   * Provider tokens spent under this goal when the round was admitted, absent
+   * when the deployment meters no tokens. Recorded because the round prompt
+   * shows this figure and an invariant re-renders that prompt from the log
+   * alone, so every model-visible number must survive replay.
+   */
+  readonly tokensUsed?: number
+  /** Active model-and-tool milliseconds spent under this goal when the round was admitted. */
+  readonly workMsUsed?: number
 }
 ```
 
@@ -134,10 +166,14 @@ interface GoalMessageSource {
 创建操作会区分调用方省略字段与采用部署配置值这两种情况，`create()` 会在内部解析后者。编辑是局部替换，其运行时校验器要求至少提供一个字段。每条变更通知都会携带获准的操作和确切修订号；清除操作不带 `goal`。
 
 ```ts type-equiv
-/** Input whose omitted round cap is resolved by the service configuration. */
+/** Input whose omitted caps are resolved by the service configuration. */
 interface CreateGoalRequest {
   readonly objective: string
   readonly maxGoalRounds?: number
+  /** Token ceiling for this goal; omitted resolves the deployment default, `null` leaves it unbounded. */
+  readonly maxGoalTokens?: number | null
+  /** Active model-and-tool millisecond ceiling for this goal; omitted resolves the deployment default. */
+  readonly maxGoalWorkMs?: number | null
 }
 ```
 
@@ -146,6 +182,10 @@ interface CreateGoalRequest {
 interface EditGoalRequest {
   readonly objective?: string
   readonly maxGoalRounds?: number
+  /** Replacement token ceiling, or `null` to remove it. */
+  readonly maxGoalTokens?: number | null
+  /** Replacement active-work millisecond ceiling, or `null` to remove it. */
+  readonly maxGoalWorkMs?: number | null
 }
 ```
 

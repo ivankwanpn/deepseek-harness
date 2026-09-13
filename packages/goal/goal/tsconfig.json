@@ -24,6 +24,9 @@
       "path": "../../llm/llm"
     },
     {
+      "path": "../../llm/token-meter"
+    },
+    {
       "path": "../../core/session"
     },
     {
@@ -34,6 +37,9 @@
     },
     {
       "path": "../../session/session-projection"
+    },
+    {
+      "path": "../../session/session-stats"
     },
     {
       "path": "../../typert/protocol"

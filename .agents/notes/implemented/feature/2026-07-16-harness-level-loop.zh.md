@@ -54,7 +54,7 @@ Status: implemented
 
 fork 会话会继承持久目标前缀，因为这是自然的重放结果。fork 从未激活状态开始，因此继承不等于执行权限，历史中也不会插入合成目标取消。
 
-`defaultMaxGoalRounds` 可配置且默认为 `256`。该上限只计算已接纳的 Goal Round。`blockedAfterConsecutiveRounds` 在模型工具策略中单独配置且默认为 `3`；它只是在自治 Round 报告重复阻塞前的机械下限，不是对语义相同性的评估器。
+`defaultMaxGoalRounds` 可配置且默认为 `256`。该上限只计算已接纳的 Goal Round。`defaultMaxGoalTokens` 与 `defaultMaxGoalWorkMs` 单独配置，默认不设上限，并按目标对照创建时记录的基线计量（[资源预算](2026-09-13-goal-resource-budgets.zh.md)）。`blockedAfterConsecutiveRounds` 在模型工具策略中单独配置且默认为 `3`；它只是在自治 Round 报告重复阻塞前的机械下限，不是对语义相同性的评估器。
 
 ### 同会话续行
 
@@ -62,7 +62,7 @@ Goal Round 驱动器为每个特定的实时 agent 至多拥有一个待定预�
 
 只有已接纳、Round 为正数且带目标来源的 `user/message` 会计入一个 Round。陈旧预留会结束一个阻塞的零步骤轮次，不会消耗上限。并发目标修订会胜过旧 Round 的结算。
 
-普通轮次完成后，只有目标仍活跃、已激活且低于上限时才会安排另一个 Round。取消会暂停。速率限制或配额耗尽以代码 `usage-limited` 阻塞；上限耗尽使用 `round-limit`；队列失败使用 `queue-failed`；轮次错误、max-token 停止、策略拒绝与未知终止结果使用各自对应的阻塞代码。独立组合的请求恢复插件可以在同一个轮次内重试暂时性提供方失败；目标驱动器绝不会在异常终止结果后凭空发起另一个 Round。人类随后可以通过 `/goal resume` 或 Web 控件恢复；blocked 目标也仍可由模型 `update_goal resume` 恢复，而持久 paused 目标不能。
+普通轮次完成后，只有目标仍活跃、已激活且低于上限时才会安排另一个 Round。取消会暂停。速率限制或配额耗尽以代码 `usage-limited` 阻塞；上限耗尽使用 `round-limit`；token 或活跃工作预算耗尽以 `budget-limit` 阻塞；队列失败使用 `queue-failed`；轮次错误、max-token 停止、策略拒绝与未知终止结果使用各自对应的阻塞代码。独立组合的请求恢复插件可以在同一个轮次内重试暂时性提供方失败；目标驱动器绝不会在异常终止结果后凭空发起另一个 Round。人类随后可以通过 `/goal resume` 或 Web 控件恢复；blocked 目标也仍可由模型 `update_goal resume` 恢复，而持久 paused 目标不能。
 
 ### 人类与模型交互
 
@@ -119,7 +119,7 @@ Codex 提供了这里采用的最小可观察目标 UX：一个附着于聊天�
 ## 已知限制与暂缓事项
 
 - **独立评估**——同会话完成/阻塞和 Ralph 终止状态都是模型或工作者声明。独立评估器、评估器驱动反馈 Round、完成证书、确定性检查器、对抗式 verifier 与标准/执行器/隔离约定均予以延期。
-- **聚合预算**——`maxGoalRounds` 与 Ralph `maxRounds` 是唯一聚合工作量限制。token、货币、耗时、提供方用量与逐 Round 价格准入策略均不存在。
+- **聚合预算**——`maxGoalRounds` 与 Ralph `maxRounds` 约束已接纳的周期数，目标的 token 与活跃工作预算约束其花费。Ralph 与子代理驱动器两者都不计量，货币、提供方配额与逐 Round 价格准入策略均不存在。
 - **没有持久自治运行器**——同会话目标事实会持久化，但激活与调度只存在于进程内，并且有意在恢复后等待人类输入。Ralph 位于前台，进程丢失后无法恢复。后台收集、重启恢复与无人值守常驻执行均予以延期。
 - **没有时间调度器**——间隔 `/loop`、cron、主动维护以及云端或桌面调度不在本决策范围内。
 - **没有通用 loop 日志或执行世界回退**——会话重放会重建目标历史，而不会恢复此前文件、进程、环境、凭据或外部副作用。Ralph 把当前工作区作为权威，并且没有跨运行日志。

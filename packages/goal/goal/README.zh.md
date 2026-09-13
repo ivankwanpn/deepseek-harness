@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-goal` 让一个长期完成目标在多轮、会话恢复、fork 与进程重启后持续存在。用户与 agent（智能体）可以 create、edit、pause、resume、complete、block 或 clear 该目标；比较并设置的更新会拒绝陈旧视图。可配置的 Round 上限（默认 256）约束自动续行，被阻塞的 goal 会保留稳定的策略代码和面向人的说明。本包存储 goal 状态但不调度工作，续行权限是进程本地的而非持久状态。单个目标需要横跨多轮时选择本包；常规单轮工作或并行目标不要使用。
+`dsh-goal` 让一个长期完成目标在多轮、会话恢复、fork 与进程重启后持续存在。用户与 agent（智能体）可以 create、edit、pause、resume、complete、block 或 clear 该目标；比较并设置的更新会拒绝陈旧视图。可配置的 Round 上限（默认 256）约束续行，可选的 token 与活跃工作预算则在已花费的工作上停止续行；被阻塞的 goal 会保留稳定的策略代码和面向人的说明。本包存储 goal 状态但不调度工作，续行权限是进程本地的而非持久状态。单个目标需要横跨多轮时选择本包；常规单轮工作或并行目标不要使用。
 
 ## 目录
 
@@ -33,23 +33,27 @@ goal 适合一个需要跨自动 Goal Round 持续的长期完成目标——例
 
 ### 配置服务
 
-通过组合配置项加载本包；唯一的部署选择是默认 Round 上限，应用于未自行指定上限的 create。
+通过组合配置项加载本包；部署选择是默认 Round 上限、token 上限与活跃工作上限，应用于未自行指定它们的 create。
 
 ```yaml
 - name: '@deepseek-ai/dsh-goal'
   config:
     defaultMaxGoalRounds: 256
+    defaultMaxGoalTokens: 2000000
+    defaultMaxGoalWorkMs: 3600000
 ```
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `defaultMaxGoalRounds` | `256` | 当 create 请求省略上限时应用的 Round 上限 |
+| `defaultMaxGoalTokens` | 无 | 当 create 请求省略上限时应用的提供方 token 上限 |
+| `defaultMaxGoalWorkMs` | 无 | 当 create 请求省略上限时应用的模型与工具活跃毫秒上限 |
 
-`defaultMaxGoalRounds` 必须是正的安全整数；指定了自身上限的 create 请求会覆盖它。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-goal)是每个受支持字段的穷尽式真源。
+`defaultMaxGoalRounds` 必须是正的安全整数；指定了自身上限的 create 请求会覆盖它。两个预算默认值必须是正的安全整数，且任一留空都会让其管辖的每个 goal 保持无上限。指定预算要求已注册对应的记账投影——token 用 [`@deepseek-ai/dsh-token-meter`](../../llm/token-meter/README.zh.md)，活跃工作用 [`@deepseek-ai/dsh-session-stats`](../../session/session-stats/README.zh.md)——未注册时指定预算的 create 或 edit 会被拒绝。base bundle 挂载 `token-meter`，只有 `web-app` 挂载 `session-stats`，因此无头组合可以为 token 设预算，但要为活跃工作设预算必须先显式加入 `session-stats` 条目。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-goal)是每个受支持字段的穷尽式真源。
 
 ### 会话投影
 
-`GoalService` 要求组合提供 `ctx.sessionProjections`（[`@deepseek-ai/dsh-session-projection`](../../session/session-projection/README.zh.md)），并在启动时注册 `goal` 投影单元；未组合投影注册表的组合无法激活 `ctx.goals`。该单元版本为 6，其宿主状态保留最新的有效当前 goal、所有曾使用的 goal id，以及第一次严格回放失败。客户端视图提供当前 goal；首次 create 前与 clear tombstone 后为 `null`。该键同时合并到 `SessionProjectionStateMap` 与 `SessionProjectionMap`；载体通过历史尾页和 `session/projection` 推送帧提供客户端值。
+`GoalService` 要求组合提供 `ctx.sessionProjections`（[`@deepseek-ai/dsh-session-projection`](../../session/session-projection/README.zh.md)），并在启动时注册 `goal` 投影单元；未组合投影注册表的组合无法激活 `ctx.goals`。该单元版本为 7，其宿主状态保留最新的有效当前 goal、所有曾使用的 goal id、第一次严格回放失败，以及每个当前 goal 的创建时记账基线。客户端视图提供当前 goal；首次 create 前与 clear tombstone 后为 `null`。该键同时合并到 `SessionProjectionStateMap` 与 `SessionProjectionMap`；载体通过历史尾页和 `session/projection` 推送帧提供客户端值。
 
 ### 驱动生命周期
 
@@ -57,15 +61,19 @@ goal 经历四种持久 phase——`active`、`paused`、`blocked`、`complete`�
 
 | 操作 | 作用 |
 |---|---|
-| `create` | 以目标和 Round 上限启动一个 active goal |
-| `edit` | 修改目标和/或 Round 上限，不改变 phase |
+| `create` | 以目标、Round 上限与可选预算启动一个 active goal |
+| `edit` | 修改目标、Round 上限和/或预算，不改变 phase |
 | `pause` | 停止自动续行并保留状态 |
 | `resume` | 重新开始续行；也用于会话恢复或 fork 后重新启用 active goal |
 | `complete` | 标记 goal 已完成并停止续行 |
 | `block` | 记录稳定的 blocker 代码与说明 |
 | `clear` | 移除当前 goal；其历史保留在会话日志中 |
 
-pause、complete、block 和 clear 都会停用续行。block 是唯一保留策略自有 lower-kebab-case 代码与自由文本说明的 phase，因此提供方限制、预算耗尽、执行错误与请求人工输入共用一种持久 phase，而不是扩增生命周期状态。resume 只在 Round 上限仍有剩余容量时接受已停止的 goal，或 active 但已停用续行的 goal，并清除任何先前的 blocker reason。
+pause、complete、block 和 clear 都会停用续行。block 是唯一保留策略自有 lower-kebab-case 代码与自由文本说明的 phase，因此提供方限制、预算耗尽、执行错误与请求人工输入共用一种持久 phase，而不是扩增生命周期状态。resume 只在 Round 上限与每个已配置预算都仍有剩余容量时接受已停止的 goal，或 active 但已停用续行的 goal，并清除任何先前的 blocker reason。
+
+### 预算
+
+一个 goal 可以在 Round 上限之外携带 token 上限、活跃工作上限，或两者兼有。`tokensUsed` 与 `workMsUsed` 是该 goal 创建以来会话记账的实时读数，先到任一个上限都会停止自动续行；驱动器以代码 `budget-limit` 阻塞该 goal，消息中指明上限、已花费量与需要提高的字段。在预算存在之前创建的 goal 会在第一次通过 edit 获得预算时记录其基线，因此预算计量的是从那时起被准入的工作，而不会追溯性地计入更早的工作。
 
 ### 什么会保留，什么不会
 
@@ -73,12 +81,15 @@ pause、complete、block 和 clear 都会停用续行。block 是唯一保留策
 
 ### 观察 goal
 
-消费方用 `ctx.goals.get(agent)` 读取当前 goal，获得脱离内部状态的视图：目标、phase、已开始与上限 Round 数量、被阻塞时的 blocker reason，以及续行是否已启用。变更必须携带该视图中的精确 `{ id, revision }`，因此持有旧状态的消费方会收到清晰的陈旧 revision 错误，而不是静默覆盖更新的状态：
+消费方用 `ctx.goals.get(agent)` 读取当前 goal，获得脱离内部状态的视图：目标、phase、已开始与上限 Round 数量、被阻塞时的 blocker reason、对照各自上限的已花费 token 与活跃工作，以及续行是否已启用。变更必须携带该视图中的精确 `{ id, revision }`，因此持有旧状态的消费方会收到清晰的陈旧 revision 错误，而不是静默覆盖更新的状态：
 
 ```text
 const view = ctx.goals.get(agent)      // undefined when no goal is current
 view.phase                             // 'active' | 'paused' | 'blocked' | 'complete'
 view.roundsStarted, view.maxGoalRounds // continuation progress
+view.maxGoalTokens, view.tokensUsed    // null when the goal carries no token ceiling or no recorded baseline
+view.maxGoalWorkMs, view.workMsUsed    // active model-and-tool milliseconds, same null rule
+view.exhaustedBudget                   // 'tokens' | 'work' | null
 view.activation                        // 'armed' | 'disarmed' — not persisted
 ```
 
@@ -94,7 +105,8 @@ view.activation                        // 'armed' | 'disarmed' — not persisted
 
 ### 设计
 
-- **事件溯源状态。** 每次变更都追加持久的 `goal/change` 事件（版本 1），携带变更后的完整快照；clear 写入带 revision 的 tombstone。会话日志是唯一的持久权威。
+- **事件溯源状态。** 每次变更都追加持久的 `goal/change` 事件（版本 1），携带变更后的完整快照；clear 写入带 revision 的 tombstone。会话日志是唯一的持久权威。两个预算上限是可选载荷字段，在它们存在之前写入的记录会被读为无上限且不宣称用量数字，而不是零预算。
+- **预算读取记账投影。** `tokensAtCreate` 与 `workMsAtCreate` 记录创建变更时该会话的累计总量，因此预算所比较的花费即便在 `tokenUsage` 与 `sessionStats` 于整份日志上累加时，也能归属于单个 goal。`tokensUsed` 与 `workMsUsed` 在每次读取时推导，绝不持久化。
 - **比较并设置的变更。** `ctx.goals` 只接受以对应 id 注册的完全相同的活跃 `Agent` 实例。`get()` 返回脱离状态的 `GoalView`；变更携带 `GoalRef { id, revision }` 并拒绝陈旧引用。创建在提交前于内部解析部署默认值。
 - **续行启用状态是进程本地的。** `armed` 与 `disarmed` 保存在每会话缓存中，绝不持久化。新缓存与每次 `agent/session-start` 边界都会停用续行，即使回放发现持久 phase 为 active；`disarm()` 移除续行权限，不写入 revision 也不发出变更事件。
 - **严格回放。** 折叠只从 `goal/change` 派生生命周期变更，并拒绝形状错误、不连续 revision、非法 phase 转换、每目标时间戳非单调，以及不连续的已准入 Round。只有已准入的来源为 goal 的 `user/message` 事件会推进正数 Round；挂钟时间倒退时，变更时间戳会限制在不早于上一次更新的值。
@@ -156,7 +168,7 @@ Goal 变更事件本身不增加模型 token。工具结果与续行调度提示
 这些限制说明 goal 服务何时不合适或需要特别注意。它们是当前包约束，不是任务积压。
 
 - **只负责状态，不负责任务调度**——本包不决定已启用续行的 goal 何时继续，不重试异常失败，也不取消活跃轮次；这些策略属于 `dsh-goal-round-driver` 等消费方包。
-- **只有 Round 数量预算**——`maxGoalRounds` 不计量 token、货币、挂钟时间或提供方配额。
+- **预算需要其计量器**——goal 预算计量提供方 token 与模型及工具的活跃时间。货币、提供方配额、逐轮价格与挂钟上限均不存在；两者都未挂载记账投影的部署完全无法创建带预算的 goal。
 - **没有独立评估器**——记录完成或阻塞的调用方拥有最终决定权；由评估器支持的认证暂缓到独立策略层。
 - **只有一个当前 goal**——系统有意不支持并行目标或独立 goal 数据库；替换或清除后，历史仍可在会话日志中读取。
 - **信任进程内生产方**——能直接访问 `Session` 的插件可以追加伪造的 `goal/change` 数据。严格回放会检测格式错误或不一致的记录，并使 goal 访问从该记录起失败，直到日志修复；这是完整性检测，不是插件隔离。

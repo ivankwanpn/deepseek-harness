@@ -16,6 +16,11 @@ import type { Session, SessionEvent, SessionLogOffset } from '@deepseek-ai/dsh-s
 import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
+// Type-only: activates the `tokenUsage` and `sessionStats` projection-key
+// merges this service reads to meter a goal's budgets. Neither package is a
+// runtime dependency, and an unmetered deployment still stores unbudgeted goals.
+import type {} from '@deepseek-ai/dsh-token-meter'
+import type {} from '@deepseek-ai/dsh-session-stats'
 import {
   applyGoalEvent,
   goalChangeRef,
@@ -32,6 +37,7 @@ import type {
   EditGoalRequest,
   GoalActivation,
   GoalBlockReason,
+  GoalBudgetKind,
   GoalPhase,
   GoalProjection,
   GoalProjectionState,
@@ -72,8 +78,12 @@ const goalProjectionSchema: ZodType<GoalProjection | null> = zod.union([
       phase: zod.union([zod.literal('active'), zod.literal('paused'), zod.literal('blocked'), zod.literal('complete')]),
       blockedReason: zod.object({ code: zod.string(), message: zod.string() }).optional(),
       maxGoalRounds: zod.number().int().positive(),
+      maxGoalTokens: zod.number().int().positive().nullable(),
+      maxGoalWorkMs: zod.number().int().positive().nullable(),
     }),
     roundsStarted: zod.number().int().nonnegative(),
+    tokensAtCreate: zod.number().int().nonnegative().optional(),
+    workMsAtCreate: zod.number().int().nonnegative().optional(),
     createdAt: zod.number(),
     updatedAt: zod.number(),
   }),
@@ -98,6 +108,11 @@ const goalProjectionStateSchema: ZodType<GoalProjectionState> = zod.object({
   if (state.current.roundsStarted > state.current.goal.maxGoalRounds) {
     context.addIssue({ code: 'custom', message: 'current goal rounds cannot exceed its configured limit' })
   }
+  const { maxGoalTokens, maxGoalWorkMs } = state.current.goal
+  if ((maxGoalTokens !== null && state.current.tokensAtCreate === undefined)
+    || (maxGoalWorkMs !== null && state.current.workMsAtCreate === undefined)) {
+    context.addIssue({ code: 'custom', message: 'a budgeted current goal must retain its create-time baseline' })
+  }
 }) as unknown as ZodType<GoalProjectionState>
 
 /** Build strict fold state from one checkpoint-safe projection state. */
@@ -105,6 +120,8 @@ function goalFoldState(state: GoalProjectionState): GoalFoldState {
   return {
     goal: state.current?.goal,
     roundsStarted: state.current?.roundsStarted ?? 0,
+    tokensAtCreate: state.current?.tokensAtCreate,
+    workMsAtCreate: state.current?.workMsAtCreate,
     createdAt: state.current?.createdAt,
     updatedAt: state.current?.updatedAt,
     lastRef: undefined,
@@ -123,6 +140,8 @@ function goalProjectionState(state: GoalFoldState): GoalProjectionState {
     current = {
       goal: state.goal,
       roundsStarted: state.roundsStarted,
+      ...state.tokensAtCreate === undefined ? {} : { tokensAtCreate: state.tokensAtCreate },
+      ...state.workMsAtCreate === undefined ? {} : { workMsAtCreate: state.workMsAtCreate },
       createdAt,
       updatedAt,
     }
@@ -165,19 +184,27 @@ export const goalProjectionDefinition = {
   init: (): GoalProjectionState => ({ current: null, seenGoalIds: [], failure: null }),
   apply: applyGoalProjection,
   wire: { viewSchema: goalProjectionSchema, view: state => state.current },
-  stateVersion: 6,
+  stateVersion: 7,
 } satisfies ProjectionDefinition<'goal', GoalProjectionState>
 
 /** Deployment defaults for goal creation. */
 export interface Config {
   /** Total rounds used when a create request omits its own cap. */
   defaultMaxGoalRounds?: number
+  /** Token ceiling used when a create request omits its own; absent leaves the goal unbounded. */
+  defaultMaxGoalTokens?: number
+  /** Active model-and-tool millisecond ceiling used when a create request omits its own. */
+  defaultMaxGoalWorkMs?: number
 }
 
 /** Resolved defaults. */
 export interface ResolvedConfig {
   /** Validated positive safe-integer default round cap. */
   defaultMaxGoalRounds: number
+  /** Validated default token ceiling, or null while unbounded. */
+  defaultMaxGoalTokens: number | null
+  /** Validated default active-work ceiling in milliseconds, or null while unbounded. */
+  defaultMaxGoalWorkMs: number | null
 }
 
 /** Process-local activation state crossing the synchronous append boundary. */
@@ -189,10 +216,40 @@ interface GoalRuntimeState {
   } | undefined
 }
 
+/**
+ * Derived per-goal counters carried by every non-clear mutation.
+ * `roundsStarted` advances on admitted rounds; the two baselines are recorded
+ * at create and retained unchanged by every later mutation, which is what lets
+ * a budget compare against the same accounting source after replay or restart.
+ */
+interface GoalCounters {
+  readonly roundsStarted: number
+  readonly tokensAtCreate?: number
+  readonly workMsAtCreate?: number
+}
+
+/**
+ * Attach recorded baselines to one mutation's counters.
+ * @param tokensAtCreate - token baseline, absent when this deployment meters no tokens.
+ * @param workMsAtCreate - active-work baseline, absent when this deployment meters no statistics.
+ * @returns the recorded baselines, omitting an unmeasured one so no caller sees an explicit `undefined`.
+ */
+function withBaselines(
+  tokensAtCreate: number | undefined,
+  workMsAtCreate: number | undefined,
+): Pick<GoalCounters, 'tokensAtCreate' | 'workMsAtCreate'> {
+  return {
+    ...tokensAtCreate === undefined ? {} : { tokensAtCreate },
+    ...workMsAtCreate === undefined ? {} : { workMsAtCreate },
+  }
+}
+
 /** Validated create input with every deployment default materialized. */
 interface ResolvedCreateGoal {
   readonly objective: string
   readonly maxGoalRounds: number
+  readonly maxGoalTokens: number | null
+  readonly maxGoalWorkMs: number | null
 }
 
 /** Validate a caller-visible positive safe-integer round cap. */
@@ -201,6 +258,44 @@ function resolveMaxGoalRounds(value: number): number {
     throw new GoalError('maxGoalRounds must be a positive safe integer', 'GOAL_INVALID_MAX_ROUNDS')
   }
   return value
+}
+
+/**
+ * Resolve one caller-visible budget ceiling. An omitted field keeps the
+ * deployment default, an explicit `null` removes the budget, and a named
+ * value must be a positive safe integer.
+ * @param value - caller value, the deployment default, or an explicit removal.
+ * @param fallback - resolved deployment default for an omitted field.
+ * @param field - caller-visible field name used in the rejection message.
+ * @returns the resolved ceiling, or null while unbounded.
+ */
+function resolveBudget(value: number | null | undefined, fallback: number | null, field: string): number | null {
+  if (value === undefined) return fallback
+  if (value === null) return null
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new GoalError(`${field} must be a positive safe integer or null`, 'GOAL_INVALID_BUDGET')
+  }
+  return value
+}
+
+/**
+ * First budget without remaining capacity, in {@link GoalBudgetKind} order.
+ * A budget whose accounting is unavailable reports no exhaustion: `create` and
+ * `edit` already refuse a budget this deployment cannot meter, and a meter
+ * that disappears afterwards must not strand an active goal.
+ * @param goal - current durable snapshot carrying the ceilings.
+ * @param tokensUsed - tokens spent since creation, or null when unmeasured.
+ * @param workMsUsed - active work spent since creation, or null when unmeasured.
+ * @returns the exhausted budget kind, or null while every ceiling retains capacity.
+ */
+function exhaustedBudget(
+  goal: GoalSnapshot,
+  tokensUsed: number | null,
+  workMsUsed: number | null,
+): GoalBudgetKind | null {
+  if (goal.maxGoalTokens !== null && tokensUsed !== null && tokensUsed >= goal.maxGoalTokens) return 'tokens'
+  if (goal.maxGoalWorkMs !== null && workMsUsed !== null && workMsUsed >= goal.maxGoalWorkMs) return 'work'
+  return null
 }
 
 /** Validate and normalize an objective at the domain boundary. */
@@ -212,10 +307,12 @@ function resolveObjective(value: string): string {
 }
 
 /** Materialize deployment defaults and validate one create request. */
-function resolveCreateGoal(request: CreateGoalRequest, defaultMaxGoalRounds: number): ResolvedCreateGoal {
+function resolveCreateGoal(request: CreateGoalRequest, defaults: ResolvedConfig): ResolvedCreateGoal {
   return {
     objective: resolveObjective(request.objective),
-    maxGoalRounds: resolveMaxGoalRounds(request.maxGoalRounds ?? defaultMaxGoalRounds),
+    maxGoalRounds: resolveMaxGoalRounds(request.maxGoalRounds ?? defaults.defaultMaxGoalRounds),
+    maxGoalTokens: resolveBudget(request.maxGoalTokens, defaults.defaultMaxGoalTokens, 'maxGoalTokens'),
+    maxGoalWorkMs: resolveBudget(request.maxGoalWorkMs, defaults.defaultMaxGoalWorkMs, 'maxGoalWorkMs'),
   }
 }
 
@@ -242,6 +339,8 @@ export class GoalService extends TypertRemoteService {
 
   static Config: z<Config> = z.object({
     defaultMaxGoalRounds: z.number().default(256),
+    defaultMaxGoalTokens: z.number().step(1).min(1),
+    defaultMaxGoalWorkMs: z.number().step(1).min(1),
   })
 
   private readonly resolved: ResolvedConfig
@@ -251,6 +350,8 @@ export class GoalService extends TypertRemoteService {
     super(ctx, 'goals')
     this.resolved = {
       defaultMaxGoalRounds: resolveMaxGoalRounds(config.defaultMaxGoalRounds ?? 256),
+      defaultMaxGoalTokens: resolveBudget(config.defaultMaxGoalTokens, null, 'defaultMaxGoalTokens'),
+      defaultMaxGoalWorkMs: resolveBudget(config.defaultMaxGoalWorkMs, null, 'defaultMaxGoalWorkMs'),
     }
     ctx.on('agent/session-start', ({ agent }) => {
       this.setActivation(agent.session, 'disarmed')
@@ -276,7 +377,7 @@ export class GoalService extends TypertRemoteService {
   @Remote('get')
   get(agent: Agent): GoalView | undefined {
     this.assertLive(agent)
-    return this.view(this.state(agent.session), this.runtimeState(agent.session))
+    return this.view(agent.session, this.state(agent.session), this.runtimeState(agent.session))
   }
 
   /**
@@ -290,7 +391,7 @@ export class GoalService extends TypertRemoteService {
     this.assertLive(agent)
     this.setActivation(agent.session, 'disarmed')
     const runtime = this.runtimeState(agent.session)
-    return this.view(this.state(agent.session), runtime)
+    return this.view(agent.session, this.state(agent.session), runtime)
   }
 
   /**
@@ -301,12 +402,14 @@ export class GoalService extends TypertRemoteService {
    * @returns the created live view.
    */
   create(agent: Agent, request: CreateGoalRequest): GoalView {
-    const spec = resolveCreateGoal(request, this.resolved.defaultMaxGoalRounds)
+    const spec = resolveCreateGoal(request, this.resolved)
     const [state, runtime] = this.prepareMutation(agent)
     const current = state?.goal
     if (current !== undefined && current.phase !== 'complete') {
       throw new GoalError(`goal "${current.id}" already exists with phase "${current.phase}"`, 'GOAL_ALREADY_EXISTS')
     }
+    const tokensAtCreate = this.tokensAt(agent.session, spec.maxGoalTokens !== null)
+    const workMsAtCreate = this.workMsAt(agent.session, spec.maxGoalWorkMs !== null)
     const now = Date.now()
     const goal: GoalSnapshot = {
       id: GoalId(`goal-${randomUUID()}`),
@@ -314,8 +417,19 @@ export class GoalService extends TypertRemoteService {
       objective: spec.objective,
       phase: 'active',
       maxGoalRounds: spec.maxGoalRounds,
+      maxGoalTokens: spec.maxGoalTokens,
+      maxGoalWorkMs: spec.maxGoalWorkMs,
     }
-    return this.commitSnapshot(agent, runtime, 'create', goal, 0, now, now, 'armed')
+    return this.commitSnapshot(
+      agent,
+      runtime,
+      'create',
+      goal,
+      { roundsStarted: 0, ...withBaselines(tokensAtCreate, workMsAtCreate) },
+      now,
+      now,
+      'armed',
+    )
   }
 
   /**
@@ -330,16 +444,48 @@ export class GoalService extends TypertRemoteService {
     const [state, runtime] = this.prepareMutation(agent)
     const currentState = this.expectCurrent(state, ref)
     const current = currentState.goal
-    if (request.objective === undefined && request.maxGoalRounds === undefined) {
-      throw new GoalError('goal edit requires objective and/or maxGoalRounds', 'GOAL_INVALID_EDIT')
+    if (request.objective === undefined && request.maxGoalRounds === undefined
+      && request.maxGoalTokens === undefined && request.maxGoalWorkMs === undefined) {
+      throw new GoalError(
+        'goal edit requires objective, maxGoalRounds, maxGoalTokens, and/or maxGoalWorkMs',
+        'GOAL_INVALID_EDIT',
+      )
     }
     const goal: GoalSnapshot = {
       ...current,
       revision: current.revision + 1,
       ...request.objective === undefined ? {} : { objective: resolveObjective(request.objective) },
       ...request.maxGoalRounds === undefined ? {} : { maxGoalRounds: resolveMaxGoalRounds(request.maxGoalRounds) },
+      ...request.maxGoalTokens === undefined
+        ? {}
+        : { maxGoalTokens: resolveBudget(request.maxGoalTokens, null, 'maxGoalTokens') },
+      ...request.maxGoalWorkMs === undefined
+        ? {}
+        : { maxGoalWorkMs: resolveBudget(request.maxGoalWorkMs, null, 'maxGoalWorkMs') },
     }
-    return this.commitCurrent(agent, currentState, runtime, 'edit', goal, runtime.activation)
+    return this.commitCurrent(agent, currentState, runtime, 'edit', goal, runtime.activation, {
+      roundsStarted: currentState.roundsStarted,
+      ...withBaselines(
+        this.editTokensBaseline(agent.session, currentState, goal.maxGoalTokens),
+        this.editWorkMsBaseline(agent.session, currentState, goal.maxGoalWorkMs),
+      ),
+    })
+  }
+
+  /**
+   * Resolve the token baseline an edit retains. A goal that already recorded
+   * one keeps it; a goal gaining its first token budget records the current
+   * total, so that budget meters work admitted from this mutation onward.
+   */
+  private editTokensBaseline(session: Session, state: GoalProjection, budget: number | null): number | undefined {
+    if (budget === null) return state.tokensAtCreate
+    return state.tokensAtCreate ?? this.tokensAt(session, true)
+  }
+
+  /** Resolve the active-work baseline an edit retains, by the same rule as its token baseline. */
+  private editWorkMsBaseline(session: Session, state: GoalProjection, budget: number | null): number | undefined {
+    if (budget === null) return state.workMsAtCreate
+    return state.workMsAtCreate ?? this.workMsAt(session, true)
   }
 
   /**
@@ -375,6 +521,18 @@ export class GoalService extends TypertRemoteService {
     if (currentState.roundsStarted >= current.maxGoalRounds) {
       throw new GoalError(
         `goal "${current.id}" exhausted ${current.maxGoalRounds} goal rounds; increase maxGoalRounds before resuming`,
+        'GOAL_INVALID_TRANSITION',
+      )
+    }
+    const exhausted = exhaustedBudget(
+      current,
+      this.usedTokens(agent.session, currentState),
+      this.usedWorkMs(agent.session, currentState),
+    )
+    if (exhausted !== null) {
+      throw new GoalError(
+        `goal "${current.id}" exhausted its ${exhausted === 'tokens' ? 'token' : 'active-work'} budget; `
+        + `raise maxGoal${exhausted === 'tokens' ? 'Tokens' : 'WorkMs'} before resuming`,
         'GOAL_INVALID_TRANSITION',
       )
     }
@@ -501,7 +659,7 @@ export class GoalService extends TypertRemoteService {
     /* v8 ignore next -- static inject requires the projection registry before this service activates. */
     if (state === undefined) return
     if (state.failure !== null) return
-    const goal = this.view(state.current, runtime)
+    const goal = this.view(session, state.current, runtime)
     this.ctx.emit('goal/activation-changed', {
       sessionId: session.id,
       ...goal === undefined ? {} : {
@@ -522,6 +680,8 @@ export class GoalService extends TypertRemoteService {
       objective: current.objective,
       phase,
       maxGoalRounds: current.maxGoalRounds,
+      maxGoalTokens: current.maxGoalTokens,
+      maxGoalWorkMs: current.maxGoalWorkMs,
     }
   }
 
@@ -557,13 +717,14 @@ export class GoalService extends TypertRemoteService {
     operation: Exclude<GoalOperation, 'create' | 'clear'>,
     goal: GoalSnapshot,
     activation: GoalActivation,
+    counters: GoalCounters = state,
   ): GoalView {
     return this.commitSnapshot(
       agent,
       runtime,
       operation,
       goal,
-      state.roundsStarted,
+      counters,
       state.createdAt,
       this.nextMutationTime(state),
       activation,
@@ -581,7 +742,7 @@ export class GoalService extends TypertRemoteService {
     runtime: GoalRuntimeState,
     operation: Exclude<GoalOperation, 'clear'>,
     goal: GoalSnapshot,
-    roundsStarted: number,
+    counters: GoalCounters,
     createdAt: number,
     updatedAt: number,
     activation: GoalActivation,
@@ -591,18 +752,19 @@ export class GoalService extends TypertRemoteService {
       version: GOAL_CHANGE_VERSION,
       operation,
       goal,
-      roundsStarted,
+      roundsStarted: counters.roundsStarted,
+      ...counters.tokensAtCreate === undefined ? {} : { tokensAtCreate: counters.tokensAtCreate },
+      ...counters.workMsAtCreate === undefined ? {} : { workMsAtCreate: counters.workMsAtCreate },
       createdAt,
       updatedAt,
     }
     this.commit(agent, runtime, change, activation)
-    return {
-      ...goal,
-      roundsStarted,
-      createdAt,
-      updatedAt,
-      activation: runtime.activation,
-    }
+    // Read the committed projection back so mutation results and `get()` derive
+    // usage, exhaustion, and timestamps in one place.
+    const committed = this.view(agent.session, this.state(agent.session), runtime)
+    /* v8 ignore next -- the mutation just committed a current goal. */
+    if (committed === undefined) throw new Error('goal mutation committed without a current goal')
+    return committed
   }
 
   /** Commit one mutation into the goal log and live event stream. */
@@ -616,7 +778,7 @@ export class GoalService extends TypertRemoteService {
     } finally {
       runtime.pendingActivation = undefined
     }
-    const goal = this.view(this.state(agent.session), runtime)
+    const goal = this.view(agent.session, this.state(agent.session), runtime)
     const notification: GoalChanged = {
       operation: change.operation,
       ref: { ...ref },
@@ -626,15 +788,81 @@ export class GoalService extends TypertRemoteService {
   }
 
   /** Build a detached current view. */
-  private view(state: GoalProjection | null, runtime: GoalRuntimeState): GoalView | undefined {
+  private view(session: Session, state: GoalProjection | null, runtime: GoalRuntimeState): GoalView | undefined {
     if (state === null) return undefined
+    const tokensUsed = this.usedTokens(session, state)
+    const workMsUsed = this.usedWorkMs(session, state)
     return {
       ...state.goal,
       roundsStarted: state.roundsStarted,
+      tokensUsed,
+      workMsUsed,
+      exhaustedBudget: exhaustedBudget(state.goal, tokensUsed, workMsUsed),
       createdAt: state.createdAt,
       updatedAt: state.updatedAt,
       activation: runtime.activation,
     }
+  }
+
+  /**
+   * Read one session's cumulative provider tokens.
+   * @param session - session whose durable usage is read.
+   * @param required - reject an unmetered deployment instead of reporting absence.
+   * @returns the summed disjoint usage buckets, or `undefined` when no token projection is registered.
+   * @throws {@link GoalError} when `required` and the deployment mounts no token accounting.
+   */
+  private tokensAt(session: Session, required: boolean): number | undefined {
+    const state = this.ctx.sessionProjections.stateOf(session, 'tokenUsage')
+    if (state !== undefined) {
+      const { uncachedInputTokens, outputTokens, cacheReadTokens, cacheWriteTokens } = state.totals
+      return uncachedInputTokens + outputTokens + cacheReadTokens + cacheWriteTokens
+    }
+    if (!required) return undefined
+    throw new GoalError(
+      'a token budget requires the tokenUsage projection; mount @deepseek-ai/dsh-token-meter',
+      'GOAL_BUDGET_UNMETERED',
+    )
+  }
+
+  /**
+   * Read one session's cumulative active model-and-tool milliseconds.
+   * @param session - session whose durable statistics are read.
+   * @param required - reject an unmetered deployment instead of reporting absence.
+   * @returns the summed model and tool wall time, or `undefined` when no statistics projection is registered.
+   * @throws {@link GoalError} when `required` and the deployment mounts no session statistics.
+   */
+  private workMsAt(session: Session, required: boolean): number | undefined {
+    const stats = this.ctx.sessionProjections.stateOf(session, 'sessionStats')
+    if (stats !== undefined) return stats.llmMs + stats.toolMs
+    if (!required) return undefined
+    throw new GoalError(
+      'an active-work budget requires the sessionStats projection; mount @deepseek-ai/dsh-session-stats',
+      'GOAL_BUDGET_UNMETERED',
+    )
+  }
+
+  /**
+   * Tokens spent under one goal.
+   * @param session - session carrying the live accounting.
+   * @param counters - goal counters supplying the create-time baseline.
+   * @returns the spent total, or null when either side of the comparison is unmeasured.
+   */
+  private usedTokens(session: Session, counters: GoalCounters): number | null {
+    const total = this.tokensAt(session, false)
+    const baseline = counters.tokensAtCreate
+    return total === undefined || baseline === undefined ? null : Math.max(0, total - baseline)
+  }
+
+  /**
+   * Active model-and-tool time spent under one goal.
+   * @param session - session carrying the live accounting.
+   * @param counters - goal counters supplying the create-time baseline.
+   * @returns the spent milliseconds, or null when either side of the comparison is unmeasured.
+   */
+  private usedWorkMs(session: Session, counters: GoalCounters): number | null {
+    const total = this.workMsAt(session, false)
+    const baseline = counters.workMsAtCreate
+    return total === undefined || baseline === undefined ? null : Math.max(0, total - baseline)
   }
 
   /**

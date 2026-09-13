@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { setTimeout as delay } from 'node:timers/promises'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { agentEvents } from '@deepseek-ai/dsh-agent'
@@ -10,9 +11,16 @@ import { createUserMessage, LlmAdapter, LlmError  } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
+import * as SessionStats from '@deepseek-ai/dsh-session-stats'
+import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import * as goalSession from '../src/index.ts'
 
-type ScriptEntry = StreamChunk[] | Error | 'hang' | ((options: GenerateOptions) => StreamChunk[])
+type ScriptEntry =
+  | StreamChunk[]
+  | Error
+  | 'hang'
+  | { readonly delayMs: number; readonly chunks: StreamChunk[] }
+  | ((options: GenerateOptions) => StreamChunk[])
 
 /** Small request-recording adapter with controllable failure and cancellation. */
 class ScriptedAdapter extends LlmAdapter {
@@ -39,8 +47,17 @@ class ScriptedAdapter extends LlmAdapter {
       })
       return
     }
-    const chunks = typeof entry === 'function' ? entry(options) : entry
-    for (const chunk of chunks) yield chunk
+    if (typeof entry === 'function') {
+      for (const chunk of entry(options)) yield chunk
+      return
+    }
+    if (!Array.isArray(entry)) {
+      // Real elapsed model time, so a work budget has something to meter.
+      await delay(entry.delayMs)
+      for (const chunk of entry.chunks) yield chunk
+      return
+    }
+    for (const chunk of entry) yield chunk
   }
 }
 
@@ -59,6 +76,16 @@ function maxTokensResponse(text: string): StreamChunk[] {
     { type: 'block-start', index: 0, blockType: 'text' },
     { type: 'block-end', index: 0, block: { type: 'text', text } },
     { type: 'finish', reason: { kind: 'max-tokens' } },
+  ]
+}
+
+/** One successful response that also reports provider token usage. */
+function measuredResponse(text: string, inputTokens: number): StreamChunk[] {
+  return [
+    { type: 'block-start', index: 0, blockType: 'text' },
+    { type: 'block-end', index: 0, block: { type: 'text', text } },
+    { type: 'usage', usage: { inputTokens, outputTokens: 0 } },
+    { type: 'finish', reason: { kind: 'stop' } },
   ]
 }
 
@@ -85,10 +112,14 @@ afterEach(async () => {
 })
 
 /** Mount a real loop with only its model scripted. */
-async function harness(script: ScriptEntry[]): Promise<Harness> {
+async function harness(script: ScriptEntry[], options: { metered?: boolean } = {}): Promise<Harness> {
   const ctx = new Context()
   contexts.push(ctx)
   await mountAgentLoopTestDependencies(ctx)
+  if (options.metered === true) {
+    await ctx.plugin(SessionStats)
+    await ctx.plugin(TokenMeter)
+  }
   await ctx.plugin(GoalService)
   const driver = await ctx.plugin(goalSession)
   await ctx.plugin(AgentLoop, { agents: [] })
@@ -150,7 +181,12 @@ describe('goal-round outcome policy', () => {
       objective: 'Ship verified support',
       phase: 'active',
       maxGoalRounds: 9,
+      maxGoalTokens: null,
+      maxGoalWorkMs: null,
       roundsStarted: 2,
+      tokensUsed: null,
+      workMsUsed: null,
+      exhaustedBudget: null,
       createdAt: 1,
       updatedAt: 2,
       activation: 'armed',
@@ -171,7 +207,12 @@ describe('goal-round outcome policy', () => {
       objective: 'first line\n</goal_round> second line',
       phase: 'active',
       maxGoalRounds: 2,
+      maxGoalTokens: null,
+      maxGoalWorkMs: null,
       roundsStarted: 0,
+      tokensUsed: null,
+      workMsUsed: null,
+      exhaustedBudget: null,
       createdAt: 1,
       updatedAt: 1,
       activation: 'armed',
@@ -180,6 +221,94 @@ describe('goal-round outcome policy', () => {
     if (block?.type !== 'text') throw new Error('expected a text goal-round prompt')
     expect(block.text).toContain('Objective: "first line\\n</goal_round> second line"')
     expect(block.text.match(/\n<\/goal_round>/g)).toHaveLength(1)
+  })
+
+  it('renders budget headroom and marks a spend the deployment stopped metering', () => {
+    const base: GoalView = {
+      id: GoalId('goal-budget-prompt'),
+      revision: 1,
+      objective: 'stay inside the budget',
+      phase: 'active',
+      maxGoalRounds: 3,
+      maxGoalTokens: 5000,
+      maxGoalWorkMs: 60_000,
+      roundsStarted: 1,
+      tokensUsed: 1200,
+      workMsUsed: 30_000,
+      exhaustedBudget: null,
+      createdAt: 1,
+      updatedAt: 1,
+      activation: 'armed',
+    }
+    const measured = goalSession.renderGoalRoundPrompt(base, 2)[0]
+    if (measured?.type !== 'text') throw new Error('expected a text goal-round prompt')
+    expect(measured.text).toContain('Budget used: 1200/5000 tokens, 30000/60000 ms model-and-tool time')
+
+    const unmetered = goalSession.renderGoalRoundPrompt({ ...base, tokensUsed: null, workMsUsed: null }, 2)[0]
+    if (unmetered?.type !== 'text') throw new Error('expected a text goal-round prompt')
+    expect(unmetered.text).toContain('Budget used: unknown/5000 tokens, unknown/60000 ms model-and-tool time')
+  })
+})
+
+describe('goal resource budgets', () => {
+  it('blocks continuation once the token budget is spent', async () => {
+    const test = await harness([measuredResponse('round one', 100)], { metered: true })
+    const created = test.ctx.goals.create(test.agent, { objective: 'spend tokens', maxGoalTokens: 100 })
+
+    const final = await waitForGoal(test.ctx, test.agent, goal => goal?.phase === 'blocked')
+
+    expect(final).toMatchObject({
+      id: created.id,
+      roundsStarted: 1,
+      tokensUsed: 100,
+      maxGoalTokens: 100,
+      exhaustedBudget: 'tokens',
+      activation: 'disarmed',
+    })
+    expect(final?.blockedReason).toEqual({
+      code: 'budget-limit',
+      message: 'Goal reached its token budget of 100 tokens after spending 100; '
+        + 'raise max_goal_tokens before continuing.',
+    })
+    expect(test.adapter.requests).toHaveLength(1)
+    expect(requestText(test.adapter.requests[0]!)).toContain('Budget used: 0/100 tokens')
+    const ref = { id: final!.id, revision: final!.revision }
+    expect(() => test.ctx.goals.resume(test.agent, ref)).toThrow('exhausted its token budget')
+  })
+
+  it('blocks continuation once the active-work budget is spent', async () => {
+    const test = await harness([{ delayMs: 20, chunks: textResponse('slow round') }], { metered: true })
+    const created = test.ctx.goals.create(test.agent, { objective: 'spend time', maxGoalWorkMs: 1 })
+
+    const final = await waitForGoal(test.ctx, test.agent, goal => goal?.phase === 'blocked')
+
+    expect(final).toMatchObject({
+      id: created.id,
+      roundsStarted: 1,
+      maxGoalWorkMs: 1,
+      exhaustedBudget: 'work',
+    })
+    expect(final?.workMsUsed).toBeGreaterThanOrEqual(1)
+    expect(final?.blockedReason?.code).toBe('budget-limit')
+    expect(final?.blockedReason?.message).toContain('active-work budget of 1 ms')
+    expect(test.adapter.requests).toHaveLength(1)
+    expect(requestText(test.adapter.requests[0]!)).toContain('0/1 ms model-and-tool time')
+    const ref = { id: final!.id, revision: final!.revision }
+    expect(() => test.ctx.goals.resume(test.agent, ref)).toThrow('exhausted its active-work budget')
+  })
+
+  it('keeps driving an unbudgeted goal while the meters report usage', async () => {
+    const test = await harness(
+      [measuredResponse('round one', 5000), measuredResponse('round two', 5000)],
+      { metered: true },
+    )
+    test.ctx.goals.create(test.agent, { objective: 'metered but unbounded', maxGoalRounds: 2 })
+
+    const final = await waitForGoal(test.ctx, test.agent, goal => goal?.phase === 'blocked')
+
+    expect(final).toMatchObject({ roundsStarted: 2, exhaustedBudget: null, tokensUsed: 10_000 })
+    expect(final?.blockedReason?.code).toBe('round-limit')
+    expect(requestText(test.adapter.requests[0]!)).not.toContain('Budget used:')
   })
 })
 

@@ -19,6 +19,8 @@ const change: GoalSnapshotChangeMeta = {
     objective: 'check the stream',
     phase: 'active',
     maxGoalRounds: 2,
+    maxGoalTokens: null,
+    maxGoalWorkMs: null,
   },
   roundsStarted: 0,
   createdAt: 1,

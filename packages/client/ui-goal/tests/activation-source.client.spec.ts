@@ -15,6 +15,8 @@ function projection(): GoalProjection {
       objective: 'ship it',
       phase: 'active',
       maxGoalRounds: 8,
+      maxGoalTokens: null,
+      maxGoalWorkMs: null,
     },
     roundsStarted: 0,
     createdAt: 1,
@@ -23,7 +25,16 @@ function projection(): GoalProjection {
 }
 
 function goalView(activation: 'armed' | 'disarmed'): GoalView {
-  return { ...projection().goal, roundsStarted: 0, createdAt: 1, updatedAt: 1, activation }
+  return {
+    ...projection().goal,
+    roundsStarted: 0,
+    tokensUsed: null,
+    workMsUsed: null,
+    exhaustedBudget: null,
+    createdAt: 1,
+    updatedAt: 1,
+    activation,
+  }
 }
 
 describe('goal activation source', () => {

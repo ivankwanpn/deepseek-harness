@@ -27,6 +27,8 @@ const PHASES: ReadonlySet<GoalPhase> = new Set(['active', 'paused', 'blocked', '
 export interface GoalFoldState {
   goal: GoalSnapshot | undefined
   roundsStarted: number
+  tokensAtCreate: number | undefined
+  workMsAtCreate: number | undefined
   createdAt: number | undefined
   updatedAt: number | undefined
   lastRef: GoalRef | undefined
@@ -41,6 +43,8 @@ export function emptyGoalFoldState(): GoalFoldState {
   return {
     goal: undefined,
     roundsStarted: 0,
+    tokensAtCreate: undefined,
+    workMsAtCreate: undefined,
     createdAt: undefined,
     updatedAt: undefined,
     lastRef: undefined,
@@ -51,6 +55,26 @@ export function emptyGoalFoldState(): GoalFoldState {
 /** Whether a value is a JSON record rather than an array. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Require every named field and reject any unnamed one. Required and optional
+ * sets stay separate so an additive payload field remains readable on records
+ * written before it existed, while an unrecognized field still fails replay.
+ */
+function requireFields(
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[],
+  label: string,
+): void {
+  for (const key of required) {
+    if (!Object.hasOwn(value, key)) throw new Error(`${label} is missing the ${key} field`)
+  }
+  const allowed = new Set([...required, ...optional])
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) throw new Error(`${label} has an unknown ${key} field`)
+  }
 }
 
 /** Require one positive safe integer. */
@@ -67,6 +91,25 @@ function nonNegativeInteger(value: unknown, field: string): number {
     throw new Error(`goal change ${field} must be a non-negative safe integer`)
   }
   return value
+}
+
+/**
+ * Decode one optional recorded counter.
+ * @param value - candidate field, absent when the record predates it.
+ * @param field - field name used in the rejection message.
+ * @returns the validated count, or `undefined` when the record omits it.
+ */
+function optionalCounter(value: unknown, field: string): number | undefined {
+  return value === undefined ? undefined : nonNegativeInteger(value, field)
+}
+
+/**
+ * Decode one budget ceiling. An absent field and an explicit `null` both mean
+ * unbounded, so a record written before budgets existed reads as unbounded
+ * rather than as a zero budget.
+ */
+function decodeBudget(value: unknown, field: string): number | null {
+  return value === undefined || value === null ? null : positiveInteger(value, field)
 }
 
 /** Decode one canonical blocker explanation. */
@@ -98,18 +141,18 @@ function decodeSnapshot(value: unknown): GoalSnapshot {
     throw new Error('goal change goal.phase is invalid')
   }
   const phase = value['phase'] as GoalPhase
-  const expectedKeys = phase === 'blocked'
-    ? 'blockedReason,id,maxGoalRounds,objective,phase,revision'
-    : 'id,maxGoalRounds,objective,phase,revision'
-  if (Object.keys(value).sort().join(',') !== expectedKeys) {
-    throw new Error(`goal change goal for phase ${phase} must have exactly ${expectedKeys} fields`)
-  }
+  const required = phase === 'blocked'
+    ? ['blockedReason', 'id', 'maxGoalRounds', 'objective', 'phase', 'revision']
+    : ['id', 'maxGoalRounds', 'objective', 'phase', 'revision']
+  requireFields(value, required, ['maxGoalTokens', 'maxGoalWorkMs'], `goal change goal for phase ${phase}`)
   return {
     id: GoalId(value['id']),
     revision: positiveInteger(value['revision'], 'goal.revision'),
     objective: value['objective'],
     phase,
     maxGoalRounds: positiveInteger(value['maxGoalRounds'], 'goal.maxGoalRounds'),
+    maxGoalTokens: decodeBudget(value['maxGoalTokens'], 'goal.maxGoalTokens'),
+    maxGoalWorkMs: decodeBudget(value['maxGoalWorkMs'], 'goal.maxGoalWorkMs'),
     ...phase === 'blocked' ? { blockedReason: decodeBlockReason(value['blockedReason']) } : {},
   }
 }
@@ -137,10 +180,12 @@ export function decodeGoalChange(value: unknown): GoalChangeMeta | undefined {
     throw new Error(`unsupported goal change version ${String(value['version'])}`)
   }
   if (value['operation'] === 'clear') {
-    const allowed = ['cleared', 'clearedAt', 'kind', 'operation', 'version']
-    if (Object.keys(value).sort().join(',') !== allowed.sort().join(',')) {
-      throw new Error(`goal clear change must have exactly ${allowed.sort().join(',')} fields`)
-    }
+    requireFields(
+      value,
+      ['cleared', 'clearedAt', 'kind', 'operation', 'version'],
+      [],
+      'goal clear change',
+    )
     return {
       kind: 'goal/change',
       version: GOAL_CHANGE_VERSION,
@@ -153,19 +198,30 @@ export function decodeGoalChange(value: unknown): GoalChangeMeta | undefined {
     || !SNAPSHOT_OPERATIONS.has(value['operation'] as Exclude<GoalOperation, 'clear'>)) {
     throw new Error('goal change operation is invalid')
   }
-  const allowed = ['createdAt', 'goal', 'kind', 'operation', 'roundsStarted', 'updatedAt', 'version']
-  if (Object.keys(value).sort().join(',') !== allowed.sort().join(',')) {
-    throw new Error(`goal snapshot change must have exactly ${allowed.sort().join(',')} fields`)
-  }
+  requireFields(
+    value,
+    ['createdAt', 'goal', 'kind', 'operation', 'roundsStarted', 'updatedAt', 'version'],
+    ['tokensAtCreate', 'workMsAtCreate'],
+    'goal snapshot change',
+  )
   const createdAt = nonNegativeInteger(value['createdAt'], 'createdAt')
   const updatedAt = nonNegativeInteger(value['updatedAt'], 'updatedAt')
   if (updatedAt < createdAt) throw new Error('goal change updatedAt cannot precede createdAt')
+  const goal = decodeSnapshot(value['goal'])
+  const tokensAtCreate = optionalCounter(value['tokensAtCreate'], 'tokensAtCreate')
+  const workMsAtCreate = optionalCounter(value['workMsAtCreate'], 'workMsAtCreate')
+  if ((goal.maxGoalTokens !== null && tokensAtCreate === undefined)
+    || (goal.maxGoalWorkMs !== null && workMsAtCreate === undefined)) {
+    throw new Error('goal change that names a budget must also carry its create-time baseline')
+  }
   return {
     kind: 'goal/change',
     version: GOAL_CHANGE_VERSION,
     operation: value['operation'] as Exclude<GoalOperation, 'clear'>,
-    goal: decodeSnapshot(value['goal']),
+    goal,
     roundsStarted: nonNegativeInteger(value['roundsStarted'], 'roundsStarted'),
+    ...tokensAtCreate === undefined ? {} : { tokensAtCreate },
+    ...workMsAtCreate === undefined ? {} : { workMsAtCreate },
     createdAt,
     updatedAt,
   } satisfies GoalSnapshotChangeMeta
@@ -179,13 +235,27 @@ function goalSource(source: MessageSource): GoalMessageSource | undefined {
     || !Number.isSafeInteger(source.round) || source.round < 1) {
     throw new Error('goal message source is invalid')
   }
-  return source
+  return {
+    kind: 'goal',
+    goalId: GoalId(source.goalId),
+    revision: source.revision,
+    round: source.round,
+    ...source.tokensUsed === undefined
+      ? {}
+      : { tokensUsed: nonNegativeInteger(source.tokensUsed, 'user/message goal source tokensUsed') },
+    ...source.workMsUsed === undefined
+      ? {}
+      : { workMsUsed: nonNegativeInteger(source.workMsUsed, 'user/message goal source workMsUsed') },
+  }
 }
 
 /** Require two snapshots to retain fields that only `edit` may replace. */
 function requireSameDefinition(current: GoalSnapshot, next: GoalSnapshot, operation: GoalOperation): void {
-  if (next.objective !== current.objective || next.maxGoalRounds !== current.maxGoalRounds) {
-    throw new Error(`goal ${operation} cannot change objective or maxGoalRounds`)
+  if (next.objective !== current.objective
+    || next.maxGoalRounds !== current.maxGoalRounds
+    || next.maxGoalTokens !== current.maxGoalTokens
+    || next.maxGoalWorkMs !== current.maxGoalWorkMs) {
+    throw new Error(`goal ${operation} cannot change the objective, round cap, or budgets`)
   }
 }
 
@@ -208,8 +278,10 @@ function validateSnapshotTransition(
   if (state.updatedAt === undefined) throw new Error('current goal fold lacks updatedAt')
   if (change.createdAt !== state.createdAt
     || change.updatedAt < state.updatedAt
-    || change.roundsStarted !== state.roundsStarted) {
-    throw new Error(`goal ${change.operation} does not preserve the current counters and timestamps`)
+    || change.roundsStarted !== state.roundsStarted
+    || change.tokensAtCreate !== state.tokensAtCreate
+    || change.workMsAtCreate !== state.workMsAtCreate) {
+    throw new Error(`goal ${change.operation} does not preserve the current counters, baselines, and timestamps`)
   }
   switch (change.operation) {
     case 'edit':
@@ -281,6 +353,8 @@ export function applyGoalChange(state: GoalFoldState, change: GoalChangeMeta): v
     }
     state.goal = undefined
     state.roundsStarted = 0
+    state.tokensAtCreate = undefined
+    state.workMsAtCreate = undefined
     state.createdAt = undefined
     state.updatedAt = undefined
     state.lastRef = ref
@@ -300,6 +374,8 @@ export function applyGoalChange(state: GoalFoldState, change: GoalChangeMeta): v
   }
   state.goal = change.goal
   state.roundsStarted = change.roundsStarted
+  state.tokensAtCreate = change.tokensAtCreate
+  state.workMsAtCreate = change.workMsAtCreate
   state.createdAt = change.createdAt
   state.updatedAt = change.updatedAt
   state.lastRef = ref
@@ -342,6 +418,8 @@ export function foldGoal(events: readonly SessionEvent[]): FoldedGoal {
   return {
     ...state.goal === undefined ? {} : { goal: { ...state.goal } },
     roundsStarted: state.roundsStarted,
+    ...state.tokensAtCreate === undefined ? {} : { tokensAtCreate: state.tokensAtCreate },
+    ...state.workMsAtCreate === undefined ? {} : { workMsAtCreate: state.workMsAtCreate },
     ...state.createdAt === undefined ? {} : { createdAt: state.createdAt },
     ...state.updatedAt === undefined ? {} : { updatedAt: state.updatedAt },
     ...state.lastRef === undefined ? {} : { lastRef: { ...state.lastRef } },

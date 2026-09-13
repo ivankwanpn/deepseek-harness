@@ -199,6 +199,11 @@
     },
     {
       "doc": "docs/subsystems/goal.md",
+      "symbol": "GoalBudgetKind",
+      "source": "packages/goal/goal/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/goal.md",
       "symbol": "GoalSnapshot",
       "source": "packages/goal/goal/src/types.ts"
     },
