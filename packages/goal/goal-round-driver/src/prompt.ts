@@ -35,7 +35,7 @@ export function renderGoalRoundPrompt(goal: GoalView, round: number): ContentBlo
     type: 'text',
     text: '<goal_round>\n'
       + `Objective: ${JSON.stringify(goal.objective)}\n`
-      + `Round: ${round}/${goal.maxGoalRounds}\n`
+      + `Round: ${goal.maxGoalRounds === null ? String(round) : `${round}/${goal.maxGoalRounds}`}\n`
       + renderBudgetLine(goal)
       + '\n'
       + 'Continue working toward the objective in this same session. Treat the current workspace, '

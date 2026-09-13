@@ -173,8 +173,17 @@ describe('goal projection unit', () => {
     }).success).toBe(false)
     expect(goalProjectionDefinition.stateSchema.safeParse({
       ...state,
-      current: { ...current, roundsStarted: current.goal.maxGoalRounds + 1 },
+      current: { ...current, roundsStarted: 5 },
     }).success).toBe(false)
+    // A null cap leaves admitted rounds unbounded: the same count is valid.
+    expect(goalProjectionDefinition.stateSchema.safeParse({
+      ...state,
+      current: {
+        ...current,
+        roundsStarted: 5,
+        goal: { ...current.goal, maxGoalRounds: null },
+      },
+    }).success).toBe(true)
     expect(goalProjectionDefinition.stateSchema.safeParse({
       ...state,
       current: { ...current, goal: { ...current.goal, maxGoalTokens: 10 } },

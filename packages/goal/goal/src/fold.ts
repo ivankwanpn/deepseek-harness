@@ -4,6 +4,7 @@ import type { MessageSource } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { GOAL_CHANGE_VERSION, GoalId } from './runtime.ts'
 import type { GoalBlockReason, GoalPhase, GoalRef, GoalSnapshot } from './types.ts'
+import { roundWithinCap, roundsExhausted } from './domain.ts'
 import type {
   FoldedGoal,
   GoalChangeMeta,
@@ -104,11 +105,11 @@ function optionalCounter(value: unknown, field: string): number | undefined {
 }
 
 /**
- * Decode one budget ceiling. An absent field and an explicit `null` both mean
- * unbounded, so a record written before budgets existed reads as unbounded
- * rather than as a zero budget.
+ * Decode one aggregate ceiling. An absent field and an explicit `null` both
+ * mean unbounded, so a record written before that ceiling existed reads as
+ * unbounded rather than as a zero limit.
  */
-function decodeBudget(value: unknown, field: string): number | null {
+function decodeCeiling(value: unknown, field: string): number | null {
   return value === undefined || value === null ? null : positiveInteger(value, field)
 }
 
@@ -142,17 +143,17 @@ function decodeSnapshot(value: unknown): GoalSnapshot {
   }
   const phase = value['phase'] as GoalPhase
   const required = phase === 'blocked'
-    ? ['blockedReason', 'id', 'maxGoalRounds', 'objective', 'phase', 'revision']
-    : ['id', 'maxGoalRounds', 'objective', 'phase', 'revision']
-  requireFields(value, required, ['maxGoalTokens', 'maxGoalWorkMs'], `goal change goal for phase ${phase}`)
+    ? ['blockedReason', 'id', 'objective', 'phase', 'revision']
+    : ['id', 'objective', 'phase', 'revision']
+  requireFields(value, required, ['maxGoalRounds', 'maxGoalTokens', 'maxGoalWorkMs'], `goal change goal for phase ${phase}`)
   return {
     id: GoalId(value['id']),
     revision: positiveInteger(value['revision'], 'goal.revision'),
     objective: value['objective'],
     phase,
-    maxGoalRounds: positiveInteger(value['maxGoalRounds'], 'goal.maxGoalRounds'),
-    maxGoalTokens: decodeBudget(value['maxGoalTokens'], 'goal.maxGoalTokens'),
-    maxGoalWorkMs: decodeBudget(value['maxGoalWorkMs'], 'goal.maxGoalWorkMs'),
+    maxGoalRounds: decodeCeiling(value['maxGoalRounds'], 'goal.maxGoalRounds'),
+    maxGoalTokens: decodeCeiling(value['maxGoalTokens'], 'goal.maxGoalTokens'),
+    maxGoalWorkMs: decodeCeiling(value['maxGoalWorkMs'], 'goal.maxGoalWorkMs'),
     ...phase === 'blocked' ? { blockedReason: decodeBlockReason(value['blockedReason']) } : {},
   }
 }
@@ -301,7 +302,7 @@ function validateSnapshotTransition(
         'paused',
         'blocked',
       ])
-      if (!resumable.has(current.phase) || next.phase !== 'active' || state.roundsStarted >= next.maxGoalRounds) {
+      if (!resumable.has(current.phase) || next.phase !== 'active' || roundsExhausted(next, state.roundsStarted)) {
         throw new Error('goal resume has an invalid phase transition or exhausted round budget')
       }
       break
@@ -400,7 +401,7 @@ export function applyGoalEvent(state: GoalFoldState, event: SessionEvent): void 
     const current = state.goal
     if (current === undefined || current.phase !== 'active' || source.goalId !== current.id
       || source.revision !== current.revision || source.round !== state.roundsStarted + 1
-      || source.round > current.maxGoalRounds) {
+      || !roundWithinCap(current, source.round)) {
       throw new Error(`goal round at session event ${event.seq} is not the next admitted round of the active goal`)
     }
     state.roundsStarted = source.round

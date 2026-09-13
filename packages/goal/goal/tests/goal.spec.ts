@@ -163,7 +163,7 @@ describe('GoalService creation and replay', () => {
     vi.useRealTimers()
   })
 
-  it('uses 256 rounds by default and validates create input inside create', async () => {
+  it('leaves rounds unbounded by default and validates create input inside create', async () => {
     const { ctx, agent } = await harness()
     expect(() => ctx.goals.create(agent, { objective: '   ' })).toThrow(expect.objectContaining({
       code: 'GOAL_INVALID_OBJECTIVE',
@@ -176,7 +176,7 @@ describe('GoalService creation and replay', () => {
     expect(() => ctx.goals.create(agent, {
       objective: 'x', maxGoalRounds: Number.MAX_SAFE_INTEGER + 1,
     })).toThrow(GoalError)
-    expect(ctx.goals.create(agent, { objective: 'x' }).maxGoalRounds).toBe(256)
+    expect(ctx.goals.create(agent, { objective: 'x' }).maxGoalRounds).toBeNull()
   })
 
   it('also resolves the default when constructed directly without Cordis config normalization', async () => {
@@ -188,7 +188,7 @@ describe('GoalService creation and replay', () => {
     const goals = new GoalService(ctx)
     await new Promise(resolve => setImmediate(resolve))
     expect(goals.create(stub.agent, { objective: 'direct' })).toMatchObject({
-      objective: 'direct', maxGoalRounds: 256,
+      objective: 'direct', maxGoalRounds: null,
     })
   })
 
@@ -196,9 +196,11 @@ describe('GoalService creation and replay', () => {
     const ctx = new Context()
     await ctx.plugin(AgentRegistry)
     await ctx.plugin(SessionProjectionRegistry)
-    await expect(ctx.plugin(GoalService, { defaultMaxGoalRounds: -1 })).rejects.toThrow(expect.objectContaining({
-      code: 'GOAL_INVALID_MAX_ROUNDS',
-    }))
+    // The declaration refuses a non-positive default before the service is built.
+    await expect(ctx.plugin(GoalService, { defaultMaxGoalRounds: -1 })).rejects.toThrow()
+    // A direct construction still fails loud with the domain code.
+    expect(() => new GoalService(ctx, { defaultMaxGoalRounds: -1 }))
+      .toThrow(expect.objectContaining({ code: 'GOAL_INVALID_MAX_ROUNDS' }))
   })
 
   /** Mount the domain over the memory settings provider, whose section can be written at runtime. */
@@ -299,6 +301,21 @@ describe('GoalService creation and replay', () => {
     expect(activations.map(entry => entry.id)).toEqual([goal.id, goal.id, goal.id])
     expect(activations.map(entry => entry.revision)).toEqual([1, 1, 2])
     expect(() => foldGoal(session.snapshotEvents())).not.toThrow()
+  })
+
+  it('admits and resumes rounds without a configured cap', async () => {
+    const { ctx, agent, session } = await harness()
+    const created = ctx.goals.create(agent, { objective: 'no round cap' })
+    for (const round of [1, 2, 3]) appendRound(session, created, round)
+
+    const refolded = foldGoal(session.snapshotEvents())
+    expect(refolded.roundsStarted).toBe(3)
+    expect(refolded.goal?.maxGoalRounds).toBeNull()
+
+    const paused = ctx.goals.pause(agent, created)
+    expect(ctx.goals.resume(agent, { id: paused.id, revision: paused.revision })).toMatchObject({
+      phase: 'active', roundsStarted: 3, maxGoalRounds: null,
+    })
   })
 
   it('lets a lifecycle owner disarm without writing a durable revision', async () => {

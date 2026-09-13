@@ -30,7 +30,8 @@ export type GoalBudgetKind = 'tokens' | 'work'
 /** Input whose omitted caps are resolved by the service configuration. */
 export interface CreateGoalRequest {
   readonly objective: string
-  readonly maxGoalRounds?: number
+  /** Round cap for this goal; omitted resolves the deployment default, `null` leaves it unbounded. */
+  readonly maxGoalRounds?: number | null
   /** Token ceiling for this goal; omitted resolves the deployment default, `null` leaves it unbounded. */
   readonly maxGoalTokens?: number | null
   /** Active model-and-tool millisecond ceiling for this goal; omitted resolves the deployment default. */
@@ -45,7 +46,8 @@ export interface CreateGoalResult {
 /** Fields changed by an edit; at least one must be present. */
 export interface EditGoalRequest {
   readonly objective?: string
-  readonly maxGoalRounds?: number
+  /** Replacement round cap, or `null` to remove it. */
+  readonly maxGoalRounds?: number | null
   /** Replacement token ceiling, or `null` to remove it. */
   readonly maxGoalTokens?: number | null
   /** Replacement active-work millisecond ceiling, or `null` to remove it. */
@@ -75,8 +77,8 @@ export interface GoalSnapshot extends GoalRef {
   readonly phase: GoalPhase
   /** Present exactly while `phase` is `blocked`. */
   readonly blockedReason?: GoalBlockReason
-  /** Total admitted goal-round cap. */
-  readonly maxGoalRounds: number
+  /** Total admitted goal-round cap, or null while continuation is unbounded by rounds. */
+  readonly maxGoalRounds: number | null
   /** Provider-token ceiling admitted under this goal, or null while unbounded. */
   readonly maxGoalTokens: number | null
   /** Active model-and-tool millisecond ceiling admitted under this goal, or null while unbounded. */

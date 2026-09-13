@@ -7,6 +7,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { FiberState } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
+import { roundsExhausted } from '@deepseek-ai/dsh-goal'
 import type { GoalMessageSource, GoalRef, GoalView } from '@deepseek-ai/dsh-goal'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, MessageId, MessageSource } from '@deepseek-ai/dsh-llm'
@@ -176,10 +177,10 @@ export function apply(ctx: Context): void {
 
     const goal = currentGoal(state)
     if (goal === undefined || goal.phase !== 'active' || goal.activation !== 'armed') return
-    if (goal.roundsStarted >= goal.maxGoalRounds) {
+    if (roundsExhausted(goal, goal.roundsStarted)) {
       ctx.goals.block(agent, goalRef(goal), {
         code: 'round-limit',
-        message: `Goal reached its configured limit of ${goal.maxGoalRounds} rounds.`,
+        message: `Goal reached its configured limit of ${String(goal.maxGoalRounds)} rounds.`,
       })
       return
     }

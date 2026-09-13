@@ -1710,7 +1710,7 @@ interface FxGoalProjection {
     revision: number
     objective: string
     phase: 'active' | 'paused' | 'blocked' | 'complete'
-    maxGoalRounds: number
+    maxGoalRounds: number | null
   }
   roundsStarted: number
   createdAt: number
@@ -2332,7 +2332,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         } else {
           const created = appendGoalChange(id, {
             kind: 'goal/change', version: 1, operation: 'create',
-            goal: { id: `fx-goal-${logOf(id).length}`, revision: 1, objective, phase: 'active', maxGoalRounds: 256 },
+            goal: { id: `fx-goal-${logOf(id).length}`, revision: 1, objective, phase: 'active', maxGoalRounds: null },
             roundsStarted: 0, createdAt: Date.now(), updatedAt: Date.now(),
           })
           setGoalActivation(id, 'armed')
@@ -2629,7 +2629,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
       const current = backscanGoal(logOf(id))
       return { ok: true, value: current === null ? undefined : goalView(id, current) }
     },
-    create(id: SessionId, request: { objective: string; maxGoalRounds?: number }): RpcResult<{ ref: FxGoalRef }> {
+    create(id: SessionId, request: { objective: string; maxGoalRounds?: number | null }): RpcResult<{ ref: FxGoalRef }> {
       const missing = requireGoalSession(id)
       if (missing !== undefined) return missing
       const current = backscanGoal(logOf(id))
@@ -2644,14 +2644,14 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
           revision: 1,
           objective: request.objective,
           phase: 'active',
-          maxGoalRounds: request.maxGoalRounds ?? 256,
+          maxGoalRounds: request.maxGoalRounds ?? null,
         },
         roundsStarted: 0, createdAt: now, updatedAt: now,
       })
       setGoalActivation(id, 'armed')
       return { ok: true, value: { ref: { id: projection.goal.id, revision: projection.goal.revision } } }
     },
-    edit(id: SessionId, ref: FxGoalRef, request: { objective?: string; maxGoalRounds?: number }): RpcResult<FxGoalView> {
+    edit(id: SessionId, ref: FxGoalRef, request: { objective?: string; maxGoalRounds?: number | null }): RpcResult<FxGoalView> {
       return mutateGoal(id, ref, current => ({
         ...current.goal,
         revision: current.goal.revision + 1,
@@ -3847,14 +3847,14 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         case 'goals/get': return Promise.resolve(goalRemotes.get(sessionId))
         case 'goals/create': return Promise.resolve(goalRemotes.create(sessionId, {
           objective: (request as { objective?: string } | undefined)?.objective as string,
-          ...(request as { maxGoalRounds?: number } | undefined)?.maxGoalRounds === undefined
+          ...(request as { maxGoalRounds?: number | null } | undefined)?.maxGoalRounds === undefined
             ? {}
-            : { maxGoalRounds: (request as { maxGoalRounds: number }).maxGoalRounds },
+            : { maxGoalRounds: (request as { maxGoalRounds: number | null }).maxGoalRounds },
         }))
         case 'goals/edit': return Promise.resolve(goalRemotes.edit(
           sessionId,
           args.ref as FxGoalRef,
-          request as { objective?: string; maxGoalRounds?: number },
+          request as { objective?: string; maxGoalRounds?: number | null },
         ))
         case 'goals/pause': return Promise.resolve(goalRemotes.pause(sessionId, args.ref as FxGoalRef))
         case 'goals/resume': return Promise.resolve(goalRemotes.resume(sessionId, args.ref as FxGoalRef))

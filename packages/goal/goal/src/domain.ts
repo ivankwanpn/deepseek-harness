@@ -110,6 +110,29 @@ export interface GoalChanged {
   readonly goal?: GoalView
 }
 
+/**
+ * Whether a goal's named round cap is spent, so no further round may be
+ * admitted. A null cap leaves continuation unbounded by rounds; the resource
+ * ceilings are then the only aggregate bound. The replay fold, the
+ * continuation driver, and the projection-state check all read this one rule.
+ * @param goal - snapshot carrying the cap.
+ * @param roundsStarted - highest admitted round number for the same goal.
+ * @returns true when another round would exceed a named cap.
+ */
+export function roundsExhausted(goal: Pick<GoalSnapshot, 'maxGoalRounds'>, roundsStarted: number): boolean {
+  return goal.maxGoalRounds !== null && roundsStarted >= goal.maxGoalRounds
+}
+
+/**
+ * Whether one admitted round number stays within the goal's named cap.
+ * @param goal - snapshot carrying the cap.
+ * @param round - the admitted round number under validation.
+ * @returns true when the round is within the cap or the cap is null.
+ */
+export function roundWithinCap(goal: Pick<GoalSnapshot, 'maxGoalRounds'>, round: number): boolean {
+  return goal.maxGoalRounds === null || round <= goal.maxGoalRounds
+}
+
 /** Stable error codes for rejected goal reads and mutations. */
 export type GoalErrorCode =
   | 'GOAL_AGENT_NOT_LIVE'

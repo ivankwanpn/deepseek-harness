@@ -5,7 +5,7 @@ import AgentRegistry, { agentEvents } from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentStatus, Inbox } from '@deepseek-ai/dsh-agent'
 import { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
 import GoalService, { GoalId } from '@deepseek-ai/dsh-goal'
-import type { GoalRef } from '@deepseek-ai/dsh-goal'
+import type { Config as GoalConfig, GoalRef } from '@deepseek-ai/dsh-goal'
 import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { MessageSource } from '@deepseek-ai/dsh-llm'
 import SessionStore, {
@@ -92,7 +92,7 @@ function closeTurn(stub: StubAgent, turn: number): void {
   stub.session.append('turn/end', { turn, reason: { kind: 'completed' } })
 }
 
-async function harness(config: toolGoal.Config = {}) {
+async function harness(config: toolGoal.Config = {}, goalConfig: GoalConfig = {}) {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
   await ctx.plugin(SessionProjectionRegistry)
@@ -102,7 +102,7 @@ async function harness(config: toolGoal.Config = {}) {
   ctx.sessionProjections.register(turnBoundaryProjectionDefinition)
   await ctx.plugin(SessionStats)
   await ctx.plugin(TokenMeter)
-  await ctx.plugin(GoalService)
+  await ctx.plugin(GoalService, goalConfig)
   const fiber = await ctx.plugin(toolGoal, config)
   const root = stubAgent(`goal-tool-root-${Math.random()}`, undefined, ctx)
   ctx.agents.register(root.agent)
@@ -233,23 +233,25 @@ describe('goal tool execution authority', () => {
     openTurn(root, { kind: 'user' }, '请持续工作直到这个功能完成')
     const result = await execute(ctx, 'create_goal', { objective: 'Finish the feature' }, root.agent)
     expect(resultGoal(result)).toMatchObject({
-      objective: 'Finish the feature', revision: 1, phase: 'active', maxGoalRounds: 256,
+      objective: 'Finish the feature', revision: 1, phase: 'active',
     })
+    // No deployment cap is configured, so the goal reports rounds without a limit.
+    expect(resultGoal(result)).not.toHaveProperty('maxGoalRounds')
     expect(resultJson(result)['activation']).toBe('armed')
     expect(ctx.goals.get(root.agent)?.objective).toBe('Finish the feature')
   })
 
   it('does not let the model name the continuation round cap', async () => {
-    const { ctx, root } = await harness()
+    const { ctx, root } = await harness({}, { defaultMaxGoalRounds: 7 })
     openTurn(root, { kind: 'user' }, 'long-running work')
-    // A model still sending the retired argument must not be able to cap
-    // continuation below the deployment's own limit: the round budget belongs
-    // to the deployment, and `update_goal` edit is the authorized path to it.
+    // A model still sending the retired argument cannot cap continuation: the
+    // deployment owns the round cap, and `update_goal` edit is the authorized
+    // path to it.
     const result = await execute(ctx, 'create_goal', {
       objective: 'Deployment owns the cap',
       max_goal_rounds: 9,
     }, root.agent)
-    expect(resultGoal(result)).toMatchObject({ maxGoalRounds: 256 })
+    expect(resultGoal(result)).toMatchObject({ maxGoalRounds: 7 })
   })
 
   it('carries budgets through create and edit and rejects them on other actions', async () => {

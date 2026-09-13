@@ -48,6 +48,7 @@ import type {
   GoalSnapshot,
   GoalView,
 } from './types.ts'
+import { roundWithinCap, roundsExhausted } from './domain.ts'
 import type {
   GoalChangeMeta,
   GoalChanged,
@@ -62,6 +63,7 @@ import type {
 // still receive the SessionProjectionStateMap merge.
 export type * from './types.ts'
 export type * from './domain.ts'
+export { roundWithinCap, roundsExhausted } from './domain.ts'
 export { GOAL_CHANGE_VERSION, GoalError, GoalId } from './runtime.ts'
 export { decodeGoalChange, foldGoal, goalChangeRef } from './fold.ts'
 
@@ -80,7 +82,7 @@ const goalProjectionSchema: ZodType<GoalProjection | null> = zod.union([
       objective: zod.string().min(1),
       phase: zod.union([zod.literal('active'), zod.literal('paused'), zod.literal('blocked'), zod.literal('complete')]),
       blockedReason: zod.object({ code: zod.string(), message: zod.string() }).optional(),
-      maxGoalRounds: zod.number().int().positive(),
+      maxGoalRounds: zod.number().int().positive().nullable(),
       maxGoalTokens: zod.number().int().positive().nullable(),
       maxGoalWorkMs: zod.number().int().positive().nullable(),
     }),
@@ -108,7 +110,7 @@ const goalProjectionStateSchema: ZodType<GoalProjectionState> = zod.object({
   if (state.current.updatedAt < state.current.createdAt) {
     context.addIssue({ code: 'custom', message: 'current goal update cannot precede its creation' })
   }
-  if (state.current.roundsStarted > state.current.goal.maxGoalRounds) {
+  if (!roundWithinCap(state.current.goal, state.current.roundsStarted)) {
     context.addIssue({ code: 'custom', message: 'current goal rounds cannot exceed its configured limit' })
   }
   const { maxGoalTokens, maxGoalWorkMs } = state.current.goal
@@ -192,7 +194,7 @@ export const goalProjectionDefinition = {
 
 /** Deployment defaults for goal creation. */
 export interface Config {
-  /** Total rounds used when a create request omits its own cap. */
+  /** Round cap used when a create request omits its own; absent or null leaves it unbounded. */
   defaultMaxGoalRounds?: number
   /** Token ceiling used when a create request omits its own; absent leaves the goal unbounded. */
   defaultMaxGoalTokens?: number
@@ -205,8 +207,8 @@ export const GOAL_SETTINGS_NAMESPACE = 'goal'
 
 /** Resolved defaults. */
 export interface ResolvedConfig {
-  /** Validated positive safe-integer default round cap. */
-  defaultMaxGoalRounds: number
+  /** Validated default round cap, or null while continuation is unbounded by rounds. */
+  defaultMaxGoalRounds: number | null
   /** Validated default token ceiling, or null while unbounded. */
   defaultMaxGoalTokens: number | null
   /** Validated default active-work ceiling in milliseconds, or null while unbounded. */
@@ -253,15 +255,24 @@ function withBaselines(
 /** Validated create input with every deployment default materialized. */
 interface ResolvedCreateGoal {
   readonly objective: string
-  readonly maxGoalRounds: number
+  readonly maxGoalRounds: number | null
   readonly maxGoalTokens: number | null
   readonly maxGoalWorkMs: number | null
 }
 
-/** Validate a caller-visible positive safe-integer round cap. */
-function resolveMaxGoalRounds(value: number): number {
+/**
+ * Resolve one caller-visible round cap. An omitted field keeps the deployment
+ * default, an explicit `null` leaves continuation unbounded by rounds, and a
+ * named value must be a positive safe integer.
+ * @param value - caller value, the deployment default, or an explicit removal.
+ * @param fallback - resolved deployment default for an omitted field.
+ * @returns the resolved cap, or null while unbounded.
+ */
+function resolveMaxGoalRounds(value: number | null | undefined, fallback: number | null): number | null {
+  if (value === undefined) return fallback
+  if (value === null) return null
   if (!Number.isSafeInteger(value) || value < 1) {
-    throw new GoalError('maxGoalRounds must be a positive safe integer', 'GOAL_INVALID_MAX_ROUNDS')
+    throw new GoalError('maxGoalRounds must be a positive safe integer or null', 'GOAL_INVALID_MAX_ROUNDS')
   }
   return value
 }
@@ -315,7 +326,7 @@ function resolveObjective(value: string): string {
 /** Materialize one configuration section into validated deployment defaults. */
 function resolveDefaults(config: Config): ResolvedConfig {
   return {
-    defaultMaxGoalRounds: resolveMaxGoalRounds(config.defaultMaxGoalRounds ?? 256),
+    defaultMaxGoalRounds: resolveMaxGoalRounds(config.defaultMaxGoalRounds, null),
     defaultMaxGoalTokens: resolveBudget(config.defaultMaxGoalTokens, null, 'defaultMaxGoalTokens'),
     defaultMaxGoalWorkMs: resolveBudget(config.defaultMaxGoalWorkMs, null, 'defaultMaxGoalWorkMs'),
   }
@@ -325,7 +336,7 @@ function resolveDefaults(config: Config): ResolvedConfig {
 function resolveCreateGoal(request: CreateGoalRequest, defaults: ResolvedConfig): ResolvedCreateGoal {
   return {
     objective: resolveObjective(request.objective),
-    maxGoalRounds: resolveMaxGoalRounds(request.maxGoalRounds ?? defaults.defaultMaxGoalRounds),
+    maxGoalRounds: resolveMaxGoalRounds(request.maxGoalRounds, defaults.defaultMaxGoalRounds),
     maxGoalTokens: resolveBudget(request.maxGoalTokens, defaults.defaultMaxGoalTokens, 'maxGoalTokens'),
     maxGoalWorkMs: resolveBudget(request.maxGoalWorkMs, defaults.defaultMaxGoalWorkMs, 'maxGoalWorkMs'),
   }
@@ -353,7 +364,7 @@ export class GoalService extends TypertRemoteService {
   static inject = ['agents', 'sessionProjections']
 
   static Config: z<Config> = z.object({
-    defaultMaxGoalRounds: z.number().default(256),
+    defaultMaxGoalRounds: z.number().step(1).min(1),
     defaultMaxGoalTokens: z.number().step(1).min(1),
     defaultMaxGoalWorkMs: z.number().step(1).min(1),
   })
@@ -487,7 +498,9 @@ export class GoalService extends TypertRemoteService {
       ...current,
       revision: current.revision + 1,
       ...request.objective === undefined ? {} : { objective: resolveObjective(request.objective) },
-      ...request.maxGoalRounds === undefined ? {} : { maxGoalRounds: resolveMaxGoalRounds(request.maxGoalRounds) },
+      ...request.maxGoalRounds === undefined
+        ? {}
+        : { maxGoalRounds: resolveMaxGoalRounds(request.maxGoalRounds, null) },
       ...request.maxGoalTokens === undefined
         ? {}
         : { maxGoalTokens: resolveBudget(request.maxGoalTokens, null, 'maxGoalTokens') },
@@ -550,9 +563,9 @@ export class GoalService extends TypertRemoteService {
     if (current.phase === 'active' && runtime.activation === 'armed') {
       throw new GoalError(`goal "${current.id}" is already active and armed`, 'GOAL_INVALID_TRANSITION')
     }
-    if (currentState.roundsStarted >= current.maxGoalRounds) {
+    if (roundsExhausted(current, currentState.roundsStarted)) {
       throw new GoalError(
-        `goal "${current.id}" exhausted ${current.maxGoalRounds} goal rounds; increase maxGoalRounds before resuming`,
+        `goal "${current.id}" exhausted ${String(current.maxGoalRounds)} goal rounds; raise or clear maxGoalRounds before resuming`,
         'GOAL_INVALID_TRANSITION',
       )
     }
