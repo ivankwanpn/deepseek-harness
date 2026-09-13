@@ -812,7 +812,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/goal/goal/src/index.ts:191`](../packages/goal/goal/src/index.ts)
+Source: [`packages/goal/goal/src/index.ts:194`](../packages/goal/goal/src/index.ts)
 
 <a id="deepseek-aidsh-headless"></a>
 
