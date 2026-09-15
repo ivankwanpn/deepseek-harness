@@ -47,7 +47,7 @@
     },
     {
       "name": "create_goal",
-      "description": "Create one persisted same-session completion goal when the current direct human request is a long-running objective that should continue across autonomous goal rounds. You may infer that intent without requiring the user to say \"create a goal\". Do not use this for trivial single-turn work. Execution rejects non-human and subagent authority.",
+      "description": "Create one persisted same-session completion goal when the current direct human request is a long-running objective that should continue across autonomous goal rounds. You may infer that intent without requiring the user to say \"create a goal\". Do not use this for trivial single-turn work. The deployment owns how many rounds and how much resource the goal may spend; name a budget only when the human asks for one. Execution rejects non-human and subagent authority.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -55,9 +55,13 @@
             "type": "string",
             "description": "The concrete completion objective inferred from the direct human request."
           },
-          "max_goal_rounds": {
+          "max_goal_tokens": {
             "type": "number",
-            "description": "Optional positive safe-integer limit on automatic continuation rounds."
+            "description": "Optional positive safe-integer ceiling on provider tokens spent under this goal. Omit it to inherit the deployment limit, which is also the most this goal may be granted."
+          },
+          "max_goal_work_ms": {
+            "type": "number",
+            "description": "Optional positive safe-integer ceiling, in milliseconds, on model-and-tool time spent under this goal. Omit it to inherit the deployment limit, which is also the most this goal may be granted."
           }
         },
         "required": [
@@ -125,7 +129,7 @@
     },
     {
       "name": "get_goal",
-      "description": "Read the current same-session goal, including its exact id/revision, objective, phase, completed continuation rounds, round limit, blocker reason when present, and whether another continuation is armed. Call this before updating a goal.",
+      "description": "Read the current same-session goal, including its exact id/revision, objective, phase, completed continuation rounds, round limit, spent tokens and model-and-tool time against their budgets when set, blocker reason when present, and whether another continuation is armed. Call this before updating a goal.",
       "parameters": {
         "type": "object",
         "properties": {}
@@ -667,6 +671,14 @@
           "max_goal_rounds": {
             "type": "number",
             "description": "Replacement cap; valid only with action edit."
+          },
+          "max_goal_tokens": {
+            "type": "number",
+            "description": "Replacement token ceiling, at most the deployment limit; valid only with action edit."
+          },
+          "max_goal_work_ms": {
+            "type": "number",
+            "description": "Replacement model-and-tool millisecond ceiling, at most the deployment limit; valid only with action edit."
           },
           "blocked_reason": {
             "type": "string",
