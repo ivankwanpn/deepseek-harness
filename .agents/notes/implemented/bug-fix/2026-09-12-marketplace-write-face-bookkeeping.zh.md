@@ -18,7 +18,7 @@ Status: implemented
 
 ## 决定
 
-- **拥有关系是 id 命名空间，不是想要的集合。** `state.ts` 导出 `isManagedRowId`，而 `composePatchLayer` 会丢弃任何带着它、且当前不被想要的行——包括插件已经消失的那一行——同时一个挂在我们的 id 与 mount 之下的外来行仍然原封不动地存活。档头的拥有关系表现在把 EXISTENCE（状态档）与 PROVENANCE（命名空间）分开，因为「记录已随插件消失的行」既不在想要的集合里，也没有状态记录可指。
+- **拥有关系是 id 命名空间，不是想要的集合。** `state.ts` 导出 `isManagedRowId`，而 `composePatchLayer` 会丢弃任何带着它、且当前不被想要的行——包括插件已经消失的那一行——同时一个挂在我们的 id 与 mount 之下的外来行仍然原封不动地存活。档头的拥有关系表现在把 EXISTENCE（状态档）与 ORIGIN（命名空间）分开，因为「记录已随插件消失的行」既不在想要的集合里，也没有状态记录可指。
 - **一次安装由市集所列之名来识别。** `installPlugin` 从解析出的条目推导出单一的 `name`，并用它作为记录、row id、内容目录与每一条讯息；`renamedFrom` 只在通知里报告一次。
 - **能力比对只读一个探针。** `materializeEntry` 呼叫 `detectCapabilities`——安装当初用来记录的那同一个函数——而不是手工拼出同样三个能力、却对其中一个用了不同的规则。已死的 `isDirectory` 辅助函数与那些手写子句都移除了。
 - **每个面向使用者的指令都会报告它的失败。** `add` 把它的抓取与注册包起来，而两个 catch 共用一个 `failureText` 辅助函数，于是「把 `unknown` 的抛出物转成字串」这件事只存在一份。

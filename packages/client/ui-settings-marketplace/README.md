@@ -29,7 +29,7 @@ Open the Plugins section in Settings and select the **Marketplace** tab. The tab
 
 ### Reading a card
 
-Each installed plugin is one card. The title is the plugin name, and the tag beside it is its state: **enabled** when every loader row it owns is present and on, **disabled** when they are present and off, **not mounted** when state records the plugin but the patch layer has no matching row, and **skills only** when it owns no loader row at all. Below the tag the card shows the pinned commit, the capabilities detected on disk, the row ids themselves, where the skill entries it owns currently are (**live**, **parked**, or **none**), and the content directory. The provenance line under the facts names the marketplace the plugin came from.
+Each installed plugin is one card. The title is the plugin name, and the tag beside it is its state: **enabled** when every loader row it owns is present and on, **disabled** when they are present and off, **not mounted** when state records the plugin but the patch layer has no matching row, and **skills only** when it owns no loader row at all. Below the tag the card shows the pinned commit, the capabilities detected on disk, the row ids themselves, where the skill entries it owns currently are (**live**, **parked**, or **none**), and the content directory. The origin line under the facts names the marketplace the plugin came from.
 
 The **skills only** state is not a fault and is not toned like one. A plugin whose only capability is skills mounts no loader row, because `skill-filesystem` discovers skills from the filesystem; calling that disabled would tell the user a live plugin is off. Its skills placement answers the question the row state cannot.
 
@@ -81,7 +81,7 @@ The Host's `status()` never materializes. `materializeEntry` copies skills into 
 
 The catalog read writes nothing either: it fetches each registration's manifest and maps its entries to rows, with installability decided by the Host's own pin rule. Its failures are per registration, so one unreadable marketplace cannot blank the rows the readable ones supplied.
 
-Enablement comes from the patch layer and nowhere else, matching the ownership rule the marketplace package states: existence and provenance live in the state file, enablement lives in the patch layer. Skills are the one capability the patch layer cannot describe, because they mount by discovery; the status view therefore carries where they are as its own fact rather than inferring it from a row.
+Enablement comes from the patch layer and nowhere else, matching the ownership rule the marketplace package states: existence and origin live in the state file, enablement lives in the patch layer. Skills are the one capability the patch layer cannot describe, because they mount by discovery; the status view therefore carries where they are as its own fact rather than inferring it from a row.
 
 ### Source map
 

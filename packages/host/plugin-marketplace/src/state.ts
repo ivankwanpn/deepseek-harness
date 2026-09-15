@@ -1,7 +1,7 @@
 /**
  * Marketplace state file — what the marketplace has installed, and where from.
  *
- * SCOPE, deliberately narrow: this file records EXISTENCE and PROVENANCE only
+ * SCOPE, deliberately narrow: this file records EXISTENCE and ORIGIN only
  * (which marketplace, which entry, which pinned sha, where it landed). It does
  * NOT record enablement — that lives in the patch layer, where a user can see
  * and hand-edit it. Splitting a single fact across two files is how the
@@ -90,7 +90,7 @@ export type InstalledCapability = 'skills' | 'commands' | 'mcp'
  * Everything the harness knows about marketplaces: what is registered, and
  * what is installed.
  *
- * Existence and provenance only. Enablement is NOT here; it lives in the patch
+ * Existence and origin only. Enablement is NOT here; it lives in the patch
  * layer, where the user can read and hand-edit it: one home for the fact, so a
  * state rewrite cannot resurrect a plugin the user turned off.
  */

@@ -67,7 +67,7 @@ Reporting "installed" for a row that was never written would be false, and regis
 
 ### Who owns what
 
-- **existence and provenance** live in the marketplace state file
+- **existence and origin** live in the marketplace state file
 - **enablement** lives in the patch layer, where the user can see and hand-edit it
 
 Splitting one fact across two files is how "I disabled it and it came back" happens, so `disabled` has exactly one home. A sync reads the current value back before composing, which is why a hand edit survives.
@@ -141,7 +141,7 @@ None of those entries declares a `sha`, so the pin rule still declines them by d
 
 #### What the model sees
 
-Each skill the plugin ships becomes one catalog entry carrying only its `name` and `description`, discovered from the agents skills root by [`skill-filesystem`](../../skill/skill-filesystem/README.md). Bodies stay out of the prompt until the model calls the `skill` tool. Nothing in this package adds text of its own: the manifest's marketing description never reaches the model, and neither does the plugin's provenance.
+Each skill the plugin ships becomes one catalog entry carrying only its `name` and `description`, discovered from the agents skills root by [`skill-filesystem`](../../skill/skill-filesystem/README.md). Bodies stay out of the prompt until the model calls the `skill` tool. Nothing in this package adds text of its own: the manifest's marketing description never reaches the model, and neither does the plugin's origin.
 
 #### Token effect
 

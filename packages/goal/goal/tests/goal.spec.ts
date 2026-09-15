@@ -113,7 +113,7 @@ async function meteredHarness(config: {
   await ctx.plugin(TokenMeter)
   await ctx.plugin(GoalService, config)
   const stub = stubAgent(`goal-settings-${Math.random()}`, undefined, ctx)
-  ctx.agents.register(stub.agent)
+  await ctx.agents.register(stub.agent)
   return { ctx, ...stub }
 }
 
@@ -249,7 +249,7 @@ describe('GoalService creation and replay', () => {
     // The deployment's own composed entry is now the base layer under the user
     // section, so a later create picks up the change without a reload.
     const second = stubAgent(`goal-settings-${Math.random()}`, undefined, first.ctx)
-    first.ctx.agents.register(second.agent)
+    await first.ctx.agents.register(second.agent)
     expect(first.ctx.goals.create(second.agent, { objective: 'from settings' }))
       .toMatchObject({ maxGoalRounds: 3, maxGoalTokens: 500 })
   })
@@ -1071,12 +1071,12 @@ describe('goal replay validation', () => {
       .toMatchObject({ maxGoalTokens: 5_000, maxGoalWorkMs: 90_000 })
 
     const under = stubAgent(`goal-under-${Math.random()}`, undefined, test.ctx)
-    test.ctx.agents.register(under.agent)
+    await test.ctx.agents.register(under.agent)
     expect(test.ctx.goals.create(under.agent, { objective: 'under the ceiling', maxGoalTokens: 1_000 }))
       .toMatchObject({ maxGoalTokens: 1_000 })
 
     const atCeiling = stubAgent(`goal-at-${Math.random()}`, undefined, test.ctx)
-    test.ctx.agents.register(atCeiling.agent)
+    await test.ctx.agents.register(atCeiling.agent)
     const created = test.ctx.goals.create(atCeiling.agent, { objective: 'ceiling reached', maxGoalTokens: 5_000 })
     expect(() => test.ctx.goals.edit(atCeiling.agent, created, { maxGoalTokens: 5_001 }))
       .toThrow(expect.objectContaining({ code: 'GOAL_BUDGET_EXCEEDS_LIMIT' }))
