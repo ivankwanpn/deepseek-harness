@@ -47,15 +47,15 @@
   - button "紧凑":
     - text: 紧凑
     - img
-  - text: 目标上限 应用于新建目标。留空的字段回退到默认：轮次上限回到内置值，预算则视为不限。 轮次上限
-  - textbox "轮次上限": "256"
-  - paragraph: 自动续跑的最大轮数。
+  - text: 目标上限 应用于新建目标。预算同时是任何 goal 可获得的最大值；留空的字段不做任何约束。 轮次上限
+  - textbox "轮次上限"
+  - paragraph: 自动续跑的最大轮数；留空表示轮次不受约束。
   - text: token 预算
   - textbox "token 预算"
-  - paragraph: 整个目标可用的提供方 token；留空表示不限。
+  - paragraph: 单个 goal 的默认与最大提供方 token；留空不做约束。
   - text: 活跃工作时长（毫秒）
   - textbox "活跃工作时长（毫秒）"
-  - paragraph: 整个目标可用的模型与工具毫秒数；留空表示不限。
+  - paragraph: 单个 goal 的默认与最大模型与工具毫秒数；留空不做约束。
   - text: 繁忙时的发送行为 智能体运行时 Enter 键和发送按钮的行为；Cmd/Ctrl+Enter 使用另一行为
   - button "排队发送":
     - text: 排队发送

@@ -47,15 +47,15 @@
   - button "Compact":
     - text: Compact
     - img
-  - text: "Goal limits Applied to new goals. An empty field falls back: the round limit returns to its built-in value, and an empty budget leaves the goal unbounded. Round limit"
-  - textbox "Round limit": "256"
-  - paragraph: Maximum automatic continuation rounds.
+  - text: Goal limits Applied to new goals. A budget is also the most any goal may be granted; an empty field bounds nothing. Round limit
+  - textbox "Round limit"
+  - paragraph: Maximum automatic continuation rounds; empty leaves rounds unbounded.
   - text: Token budget
   - textbox "Token budget"
-  - paragraph: Provider tokens available to the whole goal; empty means unbounded.
+  - paragraph: Default and maximum provider tokens for one goal; empty bounds nothing.
   - text: Active work (ms)
   - textbox "Active work (ms)"
-  - paragraph: Model and tool milliseconds available to the whole goal; empty means unbounded.
+  - paragraph: Default and maximum model-and-tool milliseconds for one goal; empty bounds nothing.
   - text: Send behavior while busy What Enter and the Send button do while the agent is running; Cmd/Ctrl+Enter uses the other behavior
   - button "Queue":
     - text: Queue
