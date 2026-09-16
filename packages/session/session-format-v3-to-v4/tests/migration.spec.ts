@@ -40,9 +40,17 @@ describe('format v3 -> v4 migration', () => {
     expect(goal).toMatchObject({ maxGoalRounds: null, maxGoalTokens: 5, maxGoalWorkMs: 6 })
   })
 
-  it('refuses a required predecessor dispatch tag and passes an ignorable one unchanged', () => {
-    expect(() => migrate([event('tool/code-dispatch-start', { rootCallId: 'r' }, 0)])).toThrow(/unknown event type/)
+  it('refuses a required predecessor dispatch tag at the stage and passes an ignorable one unchanged', () => {
+    const target = sessionFormatV3ToV4.migrateHeader(header)
+    const stage = sessionFormatV3ToV4.createStage({
+      sourceHeader: header, targetHeader: target, sourceInheritedEventCount: 0, sourceKind: 'decoded',
+    })
+    const collector = new SessionFormatEventCollector()
+    const required = event('tool/code-dispatch-start', { rootCallId: 'r' }, 0)
+    expect(() => { stage.transformEvent(required, collector) }).toThrow(/unknown event type/)
+    expect(collector.values).toEqual([])
     const ignorable = { ...event('tool/code-dispatch-start', { rootCallId: 'r' }, 0), ignorable: true }
-    expect(migrate([ignorable]).events[0]).toBe(ignorable)
+    stage.transformEvent(ignorable, collector)
+    expect(collector.values[0]).toBe(ignorable)
   })
 })
