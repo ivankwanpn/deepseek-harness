@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-09-16-goal-limit-ceilings.md
-2026-09-16-goal-limit-ceilings.md: 48953bfb83e9ae4bb85c46a81d940d75d40f633c
-2026-09-16-goal-limit-ceilings.zh.md: 7b4149c907db8e9557b980ffa820d1eb9a6f19de
+2026-09-16-goal-limit-ceilings.md: a3912806afde1c60300543985a63e45dfbdc7608
+2026-09-16-goal-limit-ceilings.zh.md: 5aa0609d305e68306d8206fc6a5818637815b92a

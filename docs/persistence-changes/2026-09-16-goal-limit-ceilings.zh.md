@@ -51,7 +51,7 @@ changes:
 <a id="compatibility"></a>
 ## 兼容性
 
-`event:goal/change` 需要版本提升：`data.goal.maxGoalRounds` 由 `number` 放宽为 `number | null`，而 `data.goal.maxGoalTokens` 与 `data.goal.maxGoalWorkMs` 成为必选属性，每次非清除变更本就都会写入它们。同一条记录承载由相邻迁移边 `@deepseek-ai/dsh-session-format-v3-to-v4` 实现的递增 `SessionHeader.version` 转换。在 v3 中三项上限是可选的，字段缺失本就表示预算无界——宽容的 goal 折叠把缺失的上限解码为 `null`——因此缺失与 `null` 表示同一个无界上限，迁移对回放无损。
+`event:goal/change` 需要版本提升：`data.goal.maxGoalRounds` 由 `number` 放宽为 `number | null`，而 `data.goal.maxGoalTokens` 与 `data.goal.maxGoalWorkMs` 成为必选属性，每次非清除变更本就都会写入它们。同一条记录承载由相邻迁移边 `@deepseek-ai/dsh-session-format-v3-to-v4` 实现的递增 `SessionHeader.version` 转换。v3 记录可以省略某项上限，字段缺失本就表示预算无界——宽容的 goal 折叠把缺失的上限解码为 `null`——因此缺失与 `null` 表示同一个无界上限，迁移对回放无损。
 
 迁移边只重写携带 `data.goal` 快照的 `goal/change`：每个缺失的上限物化为显式 `null`，已存在的数值原样保留，`tokensAtCreate` 与 `workMsAtCreate` 保持记录原状，goal 清除墓碑与无关事件原样通过，头部重盖为版本 4。其余检测到的新增都是固定规则允许在同一版本内加入的可选属性：`agent/inbox/spliced`、`session/title-llm-request` 和 `user/message` 消息来源上的 `tokensUsed` 与 `workMsUsed`，以及 `goal/change` 上的 `tokensAtCreate` 与 `workMsAtCreate`。旧记录会省略它们，不认识它们的读取器忽略它们也不会改变回放，因此它们无需转换；推断出的决策是 goal 载荷与头部转换所要求的版本提升，它在这一条转换中声明所有发生变化的根。早于 v4 的构建会拒绝 v4 记录，而不是猜测它。
 
