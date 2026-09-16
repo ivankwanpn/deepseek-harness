@@ -85,7 +85,7 @@ V4 adds no envelope admission rule beyond V3. [The codec](src/codec.ts) is the r
 
 - [Released V2 to V3](../session-format-v2-to-v3/README.md) — frozen preceding edge and the released V3 codec this package reuses.
 - [Adding a Session format version](../../../docs/cookbook/adding-a-session-format-version.md) — the release sequence every adjacent edge follows.
-- [The v3-to-v4 design note](../../../.agents/notes/proposed/architecture/2026-09-16-session-format-v3-to-v4.md) — the goal-limit payload change and its acceptance criteria.
+- [The v3-to-v4 design note](../../../.agents/notes/implemented/architecture/2026-09-16-session-format-v3-to-v4.md) — the goal-limit payload change and how it shipped.
 
 -----
 

@@ -59,6 +59,7 @@ JSONL record
   → v0-to-v1 stage
   → v1-to-v2 stage
   → v2-to-v3 stage
+  → v3-to-v4 stage
   → current event collector
 ```
 
@@ -68,7 +69,7 @@ Chain 中不存在 `flatMap`、spread expansion、中间 event array 或 schedul
 
 [V2 到 V3 投递保护](../../../../packages/session/session-format-v2-to-v3/README.zh.md#delivery-guards)防止源代中被忽略的标记仅因头部变化就成为有效上传水位。Python 发布冒烟测试独立于跨代 golden 比较，按源代码中的 `SESSION_FORMAT_VERSION` 检查生成日志，因此文件名与 header 自洽不能掩盖过期 writer。
 
-[V2 到 V3 README](../../../../packages/session/session-format-v2-to-v3/README.zh.md#v2-to-v3-specification)是该迁移边转换、保留与拒绝规则的单一规范真源；单列的[原生准入章节](../../../../packages/session/session-format-v2-to-v3/README.zh.md#native-v3-admission)避免将仅当前版本支持的能力误认为历史转换。已发布 V2 codec 仍归 V1→V2 所有，并被复用而非复制。[系统提示词](2026-09-02-system-prompt-as-surface-node.zh.md)、[PTC](../feature/2026-06-15-ptc.zh.md)和[规范信封](2026-09-06-v3-canonical-session-envelopes.zh.md)记录保留各自独立依据，而非重复转换规范。[格式版本实操手册](../../../../docs/cookbook/adding-a-session-format-version.zh.md)负责包接线、当前消费方、快照后继代际与验证命令。
+[V2 到 V3 README](../../../../packages/session/session-format-v2-to-v3/README.zh.md#v2-to-v3-specification)是该迁移边转换、保留与拒绝规则的单一规范真源；单列的[原生准入章节](../../../../packages/session/session-format-v2-to-v3/README.zh.md#native-v3-admission)避免将仅当前版本支持的能力误认为历史转换。已发布 V2 codec 仍归 V1→V2 所有，并被复用而非复制。已发布 V3 codec 仍归 V2→V3 所有，并由 [V3→V4](../../../../packages/session/session-format-v3-to-v4/README.zh.md#v3-to-v4-specification)复用，负责物化 goal 限制的三项上限；该 bump 的依据由 [V3 到 V4 设计记录](2026-09-16-session-format-v3-to-v4.zh.md)承载。[系统提示词](2026-09-02-system-prompt-as-surface-node.zh.md)、[PTC](../feature/2026-06-15-ptc.zh.md)和[规范信封](2026-09-06-v3-canonical-session-envelopes.zh.md)记录保留各自独立依据，而非重复转换规范。[格式版本实操手册](../../../../docs/cookbook/adding-a-session-format-version.zh.md)负责包接线、当前消费方、快照后继代际与验证命令。
 
 历史内容准入归入边所有，而非原生 V3 扩展校验。在不了解字段的情况下保留未知块，不能证明迁移保留了其含义。因此，[源审计](../../../../packages/session/session-format-v2-to-v3/README.zh.md#source-audit)在明确归其所有的内容位置（包括未完成的流）使用同一历史种类集合。它检查已接纳的内容而不改写，并且不解释归其他所有者所有的不透明 JSON。收紧原生准入或修改冻结的前代校验器，会改变独立承诺，而非证明转换安全。
 

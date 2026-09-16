@@ -85,7 +85,7 @@ V4 不添加超出 V3 的信封准入规则。[编解码器](src/codec.ts)就是
 
 - [已发布 V2 到 V3](../session-format-v2-to-v3/README.zh.md) — 冻结的前代迁移边，也是本包复用的已发布 V3 编解码器。
 - [新增会话格式版本](../../../docs/cookbook/adding-a-session-format-version.zh.md) — 每条相邻迁移边都遵循的发布流程。
-- [v3 到 v4 设计记录](../../../.agents/notes/proposed/architecture/2026-09-16-session-format-v3-to-v4.zh.md) — goal 限制载荷变更及其验收标准。
+- [v3 到 v4 设计记录](../../../.agents/notes/implemented/architecture/2026-09-16-session-format-v3-to-v4.zh.md) — goal 限制载荷变更及其落地结果。
 
 -----
 
