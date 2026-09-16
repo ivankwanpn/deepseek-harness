@@ -167,7 +167,7 @@ function InstalledCard({ entry, t, editable, busy, failed, onToggle, onUninstall
         <dd className={css.mono}>{entry.installPath}</dd>
       </dl>
       <p className={css.detail}>{t(STATE_DETAIL[entry.state])}</p>
-      <p className={css.provenance}>{entry.marketplace}</p>
+      <p className={css.origin}>{entry.marketplace}</p>
       {editable
         ? (
           <div className={css.controls}>

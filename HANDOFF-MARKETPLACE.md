@@ -12,8 +12,8 @@
 | **主 repo（已獨立）** | `https://github.com/ivankwanpn/deepseek-harness`（remote 名 **`origin`**） |
 | 上游（只讀保留） | `https://github.com/deepseek-ai/deepseek-harness`（remote 名 **`upstream`**） |
 | 本次分支 | `feat/plugin-marketplace` |
-| feature commit | `de1f0309ef`（44 檔、+5050 / −1） |
-| handoff commit | `71b13b826e` |
+| feature commit | `feat(marketplace): add a plugin marketplace, its CLI, and a read-only web panel`（44 檔、+5050 / −1） |
+| handoff commit | `docs: handoff for the marketplace work and the fork takeover` |
 | 是否仍是 fork？ | **不是。** 2026-09-11 已 `Leave fork network`，GitHub API 回報 `fork: false`、無 parent |
 
 **remote 佈局（2026-09-11 起）**：
@@ -29,12 +29,12 @@ upstream  https://github.com/deepseek-ai/deepseek-harness  ← 只讀保留，�
 
 ## 2. 交接前請先知道的三件事
 
-**（1）這些檔案只存在於 `feat/plugin-marketplace` 分支。** `master` 上完全沒有 marketplace 相關檔案；兩個 commit（`de1f0309ef` 功能 + `71b13b826e` handoff）都在該分支上。
+**（1）這些檔案原本只存在於 `feat/plugin-marketplace` 分支。** 兩個 commit（`feat(marketplace): add a plugin marketplace, its CLI, and a read-only web panel` 功能 + `docs: handoff for the marketplace work and the fork takeover` handoff）都在該分支上；後續的 marketplace 修補已經併入 `master`。
 
-**（1b）分支基底比 `master` 舊 134 個 commit。** 這是預期且已知的狀態：
+**（1b）分支基底比當時的 `master` 舊 134 個 commit。** 這是預期且已知的狀態：
 
-- `feat/plugin-marketplace` 從 `aa8262ec09` 分出，那是建立 fork 當時的 `master`。
-- `master` 已經到了 `c291e7961a`，含上游的 `release(dsh): 0.1.5-rc.2`。
+- `feat/plugin-marketplace` 從建立 fork 當時的 `master` 分出。
+- 當時的 `master` 已經到了上游 `release(dsh): 0.1.5-rc.2` 的同步合併。
 - **`master` 上那 134 個 commit 完整保留**（脫離 fork network 沒有丟掉任何東西）。
 - 所以：功能可用、與 `master` 的差異只在 marketplace 這 44 個檔案，但**基底較舊**。若你要拿最新的 0.1.5-rc.2 當基底，需要把這個分支 rebase 到 `master`（我沒有做，因為那要 force-push 且可能有衝突——未經確認不該動已推送的歷史）。
 

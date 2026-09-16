@@ -424,7 +424,7 @@ export class GoalService extends TypertRemoteService {
         validate: (value) => { resolveDefaults(value) },
       })
     })
-    ctx.on('agent/session-start', ({ agent }) => {
+    ctx.on('agent/created', ({ agent }) => {
       this.setActivation(agent.session, 'disarmed')
     })
     ctx.sessionProjections.register(goalProjectionDefinition)

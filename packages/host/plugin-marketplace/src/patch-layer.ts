@@ -19,7 +19,7 @@
  *
  * WHO OWNS WHAT (the invariant that keeps this from having two sources of truth):
  *  - EXISTENCE of a managed row  -> the marketplace state file.
- *  - PROVENANCE of one           -> the `marketplace:` id namespace, because a row
+ *  - ORIGIN of one           -> the `marketplace:` id namespace, because a row
  *    whose plugin was uninstalled is named by neither the desired set nor a state
  *    record that went with the plugin.
  *  - ENABLEMENT (`disabled`)                    -> the patch file, because a user
