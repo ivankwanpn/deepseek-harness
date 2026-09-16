@@ -24,6 +24,7 @@ export function assertV4EventAdmission(event: SessionFormatEvent): void {
 
 /**
  * Validate a detached v4 artifact by delegating the released v3 relationship rules.
+ * The private v3 view never escapes; the returned artifact and its identities are the caller's.
  * @param artifact - detached v4 artifact.
  * @param knownEventTypes - event types understood by the installed Session package.
  * @returns the same validated artifact.
@@ -33,5 +34,6 @@ export function restoreReleasedV4Artifact(
   knownEventTypes: ReadonlySet<string>,
 ): SessionFormatArtifact {
   assertReleasedV4Header(artifact.header)
-  return restoreReleasedV3Artifact({ ...artifact, header: { ...artifact.header, version: 3 } }, knownEventTypes)
+  restoreReleasedV3Artifact({ ...artifact, header: { ...artifact.header, version: 3 } }, knownEventTypes)
+  return artifact
 }

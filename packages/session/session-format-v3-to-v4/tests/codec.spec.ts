@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { SessionFormatHeader } from '@deepseek-ai/dsh-session-format'
-import { releasedV4SessionFormatCodec, assertReleasedV4Header } from '../src/index.ts'
+import type { SessionFormatArtifact, SessionFormatHeader } from '@deepseek-ai/dsh-session-format'
+import { releasedV4SessionFormatCodec, assertReleasedV4Header, restoreReleasedV4Artifact } from '../src/index.ts'
 
 const header: SessionFormatHeader = { version: 4, id: 'identity', createdAt: 1, isSeeded: false, delegationDepth: 0 }
 
@@ -14,5 +14,12 @@ describe('released v4 codec', () => {
     const physical = releasedV4SessionFormatCodec.encodeHeader(header, 0)
     expect(physical['version']).toBe(4)
     expect(releasedV4SessionFormatCodec.decodeHeader(physical).version).toBe(4)
+  })
+
+  it('restores a v4 artifact as the original v4 artifact', () => {
+    const artifact: SessionFormatArtifact = { header, inheritedEventCount: 0, events: [] }
+    const restored = restoreReleasedV4Artifact(artifact, new Set())
+    expect(restored).toBe(artifact)
+    expect(restored.header.version).toBe(4)
   })
 })
