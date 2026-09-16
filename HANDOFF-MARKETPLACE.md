@@ -2,6 +2,15 @@
 
 接手對象：下一個 session／另一台機器。本文假設你**沒有**本次對話的上下文。
 
+> **2026-09-16 狀態更新：marketplace 已落地。**
+>
+> - marketplace 已併入 `master`：`feat/plugin-marketplace`（PR #1）、修補（PR #2）、寫入面缺陷修正（PR #4），三個 PR 都已合併。
+> - `master` 其後又合併了上游 `dsh-v0.1.6-alpha.1`（PR #17，661 個上游 commit）；merge 後重驗，marketplace 的兩個套件、CLI 子命令與 web 面板都完整存活。
+> - 所以：**不需要 rebase**（§2 第 1b 點已失效），`feat/plugin-marketplace` 分支已無用途。
+> - 第 2 節的建置順序、第 5–6 節的環境事實與坑、第 7 節的未做項**仍然有效**；第 4 節的驗證基線是當時的實測值，之後閘門數量已變（`test:docs` 20 道、`doc-sync` 40+ 道）。
+> - 改這份文件時注意：新閘門 `verify-repository-references` 會拒絕維護中文件裡的**真實 commit hash**，請用 commit subject。
+> - 後續的 upstream 同步與其已知紅燈見 `HANDOFF-UPSTREAM-MERGE.md`。
+
 ---
 
 ## 1. 這是什麼專案、東西在哪
@@ -11,7 +20,7 @@
 | 本機工作區 | `D:\deepseek-harness` |
 | **主 repo（已獨立）** | `https://github.com/ivankwanpn/deepseek-harness`（remote 名 **`origin`**） |
 | 上游（只讀保留） | `https://github.com/deepseek-ai/deepseek-harness`（remote 名 **`upstream`**） |
-| 本次分支 | `feat/plugin-marketplace` |
+| 本次分支（已合併，保留為歷史） | `feat/plugin-marketplace`（PR #1） |
 | feature commit | `feat(marketplace): add a plugin marketplace, its CLI, and a read-only web panel`（44 檔、+5050 / −1） |
 | handoff commit | `docs: handoff for the marketplace work and the fork takeover` |
 | 是否仍是 fork？ | **不是。** 2026-09-11 已 `Leave fork network`，GitHub API 回報 `fork: false`、無 parent |
@@ -31,12 +40,7 @@ upstream  https://github.com/deepseek-ai/deepseek-harness  ← 只讀保留，�
 
 **（1）這些檔案原本只存在於 `feat/plugin-marketplace` 分支。** 兩個 commit（`feat(marketplace): add a plugin marketplace, its CLI, and a read-only web panel` 功能 + `docs: handoff for the marketplace work and the fork takeover` handoff）都在該分支上；後續的 marketplace 修補已經併入 `master`。
 
-**（1b）分支基底比當時的 `master` 舊 134 個 commit。** 這是預期且已知的狀態：
-
-- `feat/plugin-marketplace` 從建立 fork 當時的 `master` 分出。
-- 當時的 `master` 已經到了上游 `release(dsh): 0.1.5-rc.2` 的同步合併。
-- **`master` 上那 134 個 commit 完整保留**（脫離 fork network 沒有丟掉任何東西）。
-- 所以：功能可用、與 `master` 的差異只在 marketplace 這 44 個檔案，但**基底較舊**。若你要拿最新的 0.1.5-rc.2 當基底，需要把這個分支 rebase 到 `master`（我沒有做，因為那要 force-push 且可能有衝突——未經確認不該動已推送的歷史）。
+**（1b）（已失效）分支基底比當時的 `master` 舊 134 個 commit。** 當時的建議是「要拿最新基底就把分支 rebase 到 `master`」。實際上這個分支後來以 PR #1 併入 `master`，`master` 其後又合併了上游 `dsh-v0.1.6-alpha.1`（PR #17）——rebase 這件事不需要了，這一節留作當時狀態的記錄。
 
 **（2）建置順序有硬依賴。** 前端套件的 tsdown 需要先有 `tsc` 產出的 `lib/types/`，否則會 `UNRESOLVED_ENTRY: Cannot resolve entry module lib/types/index.js`：
 
@@ -98,7 +102,7 @@ npx tsdown --env.DSH_BUILD_FACE client
 ## 6. 踩過的坑（請務必讀，這些都真的發生過）
 
 1. **`zod` 必須是 `dependencies`，不能只放 `peerDependencies`。** typert 產生的 `lib/typert.remote-client.js` / `typert.host.js` 在 runtime 會 `import ... from 'zod'`。漏了它，`dsh web` 會整個掛掉並顯示 `Failed to load plugins ... resolver("zod") missed the module table`，而且**同一個 server 上的其他 client plugin 也一起死**。已修（`plugin-marketplace/package.json`）。
-2. **`tsdown` 的進入點清單是 `lib/types/{index,invariant,startup}.js`。** 宣告在 `exports` 裡的**其他**子路徑不會被 bundle。`./marketplace-command` 因此必須指向 `lib/types/marketplace-command.js`（tsc 產物），不能指向 `lib/marketplace-command.js`。同層的 `plugin-inventory` 的 `./typert`、`./remote` 是**既存的同類問題**（指向不存在的檔案），我沒動。
+2. **`tsdown` 的進入點清單是 `lib/types/{index,invariant,startup}.js`。** 宣告在 `exports` 裡的**其他**子路徑不會被 bundle。`./marketplace-command` 因此必須指向 `lib/types/marketplace-command.js`（tsc 產物），不能指向 `lib/marketplace-command.js`。同層的 `plugin-inventory` 的 `./typert`、`./remote` 當時也指向不存在的檔案，我沒動；**2026-09-16 重查：完整建置後這兩個檔案存在（typert generator 產出）且列在該套件的 `files` 清單裡**，所以那條已不成立。
 3. **不要從 Node-only 套件 import 到會被瀏覽器編譯面讀到的模組。** gateway 原本從 `@deepseek-ai/dsh-app-boot` import `PROFILE_PATCH_FILENAME`，導致 client 編譯把整個 Node 套件（`node:fs`、`node:url`）拉進瀏覽器目標。現改用字面值 `'cordis.patch.yml'`。同理，`gateway.ts` **刻意不再匯出** `./types.ts`（那會讓 Remote 宣告指向 gateway，重蹈覆轍）。
 4. **`oxlint` 不在 `verify-*` 閘門裡。** 「閘門全綠」不代表 lint 過。我當時跑了 16 個閘門都綠，卻有 17 個 lint 錯誤，是 pre-commit hook 才擋下來。**送 PR 前請跑 `npx oxlint packages`。**
 5. **PowerShell 的 `Set-Content -Encoding UTF8` 會加 BOM。** 用它寫 commit message 會讓 subject 開頭帶 `\uFEFF`。用 `[System.IO.File]::WriteAllBytes` 或 `git commit -m`。另外別用 PowerShell 管線取值再寫檔（會把換行壓成單行）。
@@ -114,10 +118,10 @@ npx tsdown --env.DSH_BUILD_FACE client
 
 ## 8. 建議的下一步順序
 
-1. 在**新機器**上 `pnpm install` → `pnpm run build`，確認 `npx oxlint packages` 與 `npx vitest run packages/host/plugin-marketplace` 都乾淨。
-2. 起 `dsh web`，開 Settings → Plugins → **Marketplace**，確認面板會渲染（空狀態也要正常顯示，不該是錯誤畫面）。
-3. 決定要不要把 `feat/plugin-marketplace` rebase 到 `master`（見 §2 第 1b 點）。
-4. 若要做第二階段（可寫入的 web 面板），先設計權限與確認流程，再動手。
+1. ~~在新機器上 `pnpm install` → `pnpm run build`，確認 lint 與 marketplace 測試乾淨。~~ 已完成（併入 `master` 的流程中跑過）。
+2. ~~起 `dsh web` 確認面板渲染。~~ 已完成；面板可用，註冊官方 registry 的指令是 `dsh plugin marketplace add official --profile web`（本次實測 296 個外掛）。
+3. ~~rebase `feat/plugin-marketplace`~~ 不需要了（見 §2 第 1b 點）。
+4. **仍未做**：可寫入的 web 面板（先設計權限與確認流程再動手，見 §7）；`commands/` 能力的格式缺口（見 §7）；`*/remote` 子路徑的解析方式（上游 merge 後 `assembly.client.spec.ts` 在乾淨樹上穩定重現，見 `HANDOFF-UPSTREAM-MERGE.md`）。
 
 ## 9. 這次「脫離 fork network」的完整經過（給接手的人除錯用）
 
