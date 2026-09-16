@@ -44,6 +44,10 @@
   },
   "devDependencies": {
     "@deepseek-ai/dsh-session-format-v1-to-v2": "workspace:^",
-    "@deepseek-ai/dsh-session-format-v0-to-v1": "workspace:^"
+    "@deepseek-ai/dsh-session-format-v0-to-v1": "workspace:^",
+    "@deepseek-ai/cordis": "workspace:^"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^"
   }
 }
