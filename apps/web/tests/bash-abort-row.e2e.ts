@@ -7,13 +7,15 @@ import { join } from 'node:path'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
+import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
 import { newEnglishPage, saveFailureShot } from './support.ts'
 
-const FIXTURE = fileURLToPath(new URL('../../../snapshots/acp/cancel-tool-calls/session.v3.jsonl', import.meta.url))
+const FIXTURE = fileURLToPath(new URL(`../../../snapshots/acp/cancel-tool-calls/${sessionFixtureName(0, SESSION_FORMAT_VERSION)}`, import.meta.url))
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/bash-abort-row', import.meta.url))
 const UI_EXPECTED = join(SNAPSHOT_DIR, 'ui.expected.md')
 const MODE = webSnapshotMode()

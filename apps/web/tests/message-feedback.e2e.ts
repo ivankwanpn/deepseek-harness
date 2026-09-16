@@ -7,8 +7,9 @@ import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
 import {
   acknowledgeReloadConnectionLoss, launchWebScaffold,
   seedSession, watchConsole, webSnapshotMode, type WebScaffold,
@@ -17,7 +18,7 @@ import { newEnglishPage, saveFailureShot } from './support.ts'
 
 // Borrowed read-only: this scenario needs any settled assistant message to
 // address, not a new recording (message-actions / sidebar-scrollbar pattern).
-const SEED = fileURLToPath(new URL('../../../snapshots/web/seeded-history/session.v3.jsonl', import.meta.url))
+const SEED = fileURLToPath(new URL(`../../../snapshots/web/seeded-history/${sessionFixtureName(0, SESSION_FORMAT_VERSION)}`, import.meta.url))
 const MODE = webSnapshotMode()
 const SEED_ID = 'message-feedback-web-e2e'
 const POSITIVE_NOTE = 'Clear and complete.'

@@ -8,8 +8,9 @@ import { once } from 'node:events'
 import { gunzipSync } from 'node:zlib'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
-import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, type SessionEvent, type SessionId } from '@deepseek-ai/dsh-session'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
 import {
   acknowledgeReloadConnectionLoss, assertFixtureInventory, captureExpandedTurnProcessAria, captureStableAria,
   compareOrRefreshGolden, fixtureUserPrompts,
@@ -19,7 +20,7 @@ import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './suppor
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/feedback-release', import.meta.url))
 // Both routes borrow the same settled turn; this manifest references its owner.
-const FIXTURE = fileURLToPath(new URL('../../../snapshots/web/feedback-command/session.v3.jsonl', import.meta.url))
+const FIXTURE = fileURLToPath(new URL(`../../../snapshots/web/feedback-command/${sessionFixtureName(0, SESSION_FORMAT_VERSION)}`, import.meta.url))
 const ACK_EXPECTED = join(SNAPSHOT_DIR, 'ack.expected.md')
 const ACK_EXPANDED_EXPECTED = join(SNAPSHOT_DIR, 'ack-expanded.expected.md')
 const RELEASE_EXPECTED = join(SNAPSHOT_DIR, 'feedback-release.expected.json')
@@ -112,7 +113,7 @@ describe.each(MODE === 'record' ? ['deepseek-official'] : ['deepseek-official', 
           { id: 'feedback-mock', name: 'Feedback mock', contextWindow: 128_000 },
         ] },
       ],
-      // The replayed session.v3.jsonl belongs to the feedback-command scenario;
+      // The replayed current-generation session fixture belongs to the feedback-command scenario;
       // comparing (or refreshing) the persisted session here would rewrite
       // that shared source with this lane's feedback events. Persistence and
       // collector assertions belong to this lane.

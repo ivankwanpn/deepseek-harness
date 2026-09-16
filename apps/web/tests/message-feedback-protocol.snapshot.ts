@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
+import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
 import {
   assertFixtureInventory,
   compareOrRefreshGolden,
@@ -12,7 +14,7 @@ import {
 } from './scaffold.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/message-feedback-protocol', import.meta.url))
-const SESSION_FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
+const SESSION_FIXTURE = join(SNAPSHOT_DIR, sessionFixtureName(0, SESSION_FORMAT_VERSION))
 const PROTOCOL_EXPECTED = join(SNAPSHOT_DIR, 'protocol.expected.json')
 const SESSION_ID = 'message-feedback-protocol'
 const MESSAGE_ID = fixtureIdentity('message', 2)
@@ -112,6 +114,6 @@ describe('message feedback Host Remote protocol', () => {
 
     expect(exchanges.every(exchange => exchange.status === 200)).toBe(true)
     await compareOrRefreshGolden(PROTOCOL_EXPECTED, normalizeProtocol(exchanges, version), scaffold.mode)
-    await assertFixtureInventory(SNAPSHOT_DIR, ['protocol.expected.json', 'session.v3.jsonl'])
+    await assertFixtureInventory(SNAPSHOT_DIR, ['protocol.expected.json', sessionFixtureName(0, SESSION_FORMAT_VERSION)])
   })
 })

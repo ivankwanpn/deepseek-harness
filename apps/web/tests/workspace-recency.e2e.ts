@@ -4,6 +4,8 @@ import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Browser, type Page, type WebSocketRoute } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
+import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
 import {
   acknowledgeReloadConnectionLoss, assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
   launchWebScaffold, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
@@ -11,7 +13,7 @@ import {
 import { newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/workspace-recency', import.meta.url))
-const SEED = fileURLToPath(new URL('../../../snapshots/web/seeded-history/session.v3.jsonl', import.meta.url))
+const SEED = fileURLToPath(new URL(`../../../snapshots/web/seeded-history/${sessionFixtureName(0, SESSION_FORMAT_VERSION)}`, import.meta.url))
 const MODE = webSnapshotMode()
 const TITLES = ['Newest conversation', 'Middle conversation', 'Oldest conversation']
 

@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed, onTestFinished } from 'vitest'
-import type { Session, SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, type Session, type SessionEvent, type SessionId } from '@deepseek-ai/dsh-session'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
   fixtureUserPrompts, launchWebScaffold, watchConsole, webSnapshotMode,
@@ -22,8 +23,8 @@ const MODE = webSnapshotMode()
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/workflow-run', import.meta.url))
 const UI_LIVE_EXPECTED = join(SNAPSHOT_DIR, 'ui-live.expected.md')
 const UI_EXPECTED = join(SNAPSHOT_DIR, 'ui.expected.md')
-const PARENT_FIXTURE = join(REPO_ROOT, 'snapshots/session/workflow-run/session.v3.jsonl')
-const CHILD_FIXTURE = join(REPO_ROOT, 'snapshots/session/workflow-run/session.1.v3.jsonl')
+const PARENT_FIXTURE = join(REPO_ROOT, 'snapshots/session/workflow-run', sessionFixtureName(0, SESSION_FORMAT_VERSION))
+const CHILD_FIXTURE = join(REPO_ROOT, 'snapshots/session/workflow-run', sessionFixtureName(1, SESSION_FORMAT_VERSION))
 const CHILD_PROMPT = 'Reply with exactly the word WF_CHILD_OK and nothing else.'
 
 describe.skipIf(MODE === 'record')('web e2e: durable workflow run in Chat', () => {

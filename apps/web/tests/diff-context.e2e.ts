@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Browser, type Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
+import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
   launchWebScaffold, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
@@ -13,8 +15,8 @@ const ROOT = fileURLToPath(new URL('../../../snapshots', import.meta.url))
 const MODE = webSnapshotMode()
 
 const CASES = [
-  { name: 'diff-context', source: 'session/fs-edit/session.v3.jsonl', totals: '+1 -1', shared: 'level=info', inventory: ['ui.expected.md'] },
-  { name: 'diff-bounded', source: 'web/diff-bounded/session.v3.jsonl', totals: '+130 -130', shared: 'shared heading', inventory: ['session.v3.jsonl', 'ui.expected.md'] },
+  { name: 'diff-context', source: `session/fs-edit/${sessionFixtureName(0, SESSION_FORMAT_VERSION)}`, totals: '+1 -1', shared: 'level=info', inventory: ['ui.expected.md'] },
+  { name: 'diff-bounded', source: `web/diff-bounded/${sessionFixtureName(0, SESSION_FORMAT_VERSION)}`, totals: '+130 -130', shared: 'shared heading', inventory: [sessionFixtureName(0, SESSION_FORMAT_VERSION), 'ui.expected.md'] },
 ]
 
 describe.skipIf(MODE === 'record').each(CASES)('web e2e: $name', (scenario) => {

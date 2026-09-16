@@ -6,8 +6,9 @@ import { chromium, type Browser, type Page } from 'playwright'
 import { unzipSync, strFromU8 } from 'fflate'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { tmpdir, release } from 'node:os'
-import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, type SessionEvent, type SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-tool-present/types'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
 import {
   acknowledgeReloadConnectionLoss, assertFinalWorkspaceSnapshot, captureExpandedTurnProcessAria,
   compareOrRefreshGolden, fixtureUserPrompts, launchWebScaffold, recordFixture,
@@ -16,7 +17,7 @@ import {
 import { connectFreshWorkspace, newEnglishPage } from './support.ts'
 
 const DIR = fileURLToPath(new URL('../../../snapshots/web/present', import.meta.url))
-const FIXTURE = join(DIR, 'session.v3.jsonl')
+const FIXTURE = join(DIR, sessionFixtureName(0, SESSION_FORMAT_VERSION))
 const MODE = webSnapshotMode()
 const PROMPT = 'Use one run_code program to do the following in order. Call present for missing.txt and catch its error without creating that file. '
   + 'Use bash to run exactly `printf "DELIVERED_REPORT\\n" > report.txt; printf "DELIVERED_NOTE\\n" > 说明.txt`. '

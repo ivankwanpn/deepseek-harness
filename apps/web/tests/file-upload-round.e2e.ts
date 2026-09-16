@@ -6,14 +6,15 @@
 // content-addressed store makes the saved path identical across record and
 // replay once the workspace cwd is tokenized, so the recorded read arguments
 // replay verbatim against a freshly re-uploaded object.
-// Record: DSH_SNAPSHOT=record rewrites session.v3.jsonl, then a keyless
+// Record: DSH_SNAPSHOT=record rewrites the current-generation session fixture, then a keyless
 // DSH_SNAPSHOT=refresh regenerates ui.expected.md.
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
@@ -21,7 +22,7 @@ import {
 import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/file-upload-round', import.meta.url))
-const FIXTURE = fileURLToPath(new URL('../../../snapshots/web/file-upload-round/session.v3.jsonl', import.meta.url))
+const FIXTURE = fileURLToPath(new URL(`../../../snapshots/web/file-upload-round/${sessionFixtureName(0, SESSION_FORMAT_VERSION)}`, import.meta.url))
 const UI_EXPECTED = fileURLToPath(new URL('../../../snapshots/web/file-upload-round/ui.expected.md', import.meta.url))
 const TRAJECTORY_EXPECTED = fileURLToPath(new URL('../../../snapshots/web/file-upload-round/trajectory.expected.md', import.meta.url))
 const OVERRIDE = fileURLToPath(new URL('../../../snapshots/web/file-upload-round/replay.override.json', import.meta.url))
@@ -299,7 +300,7 @@ describe('web e2e: generic file upload through the real assembly', () => {
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
     await assertFixtureInventory(SNAPSHOT_DIR, [
-      'session.v3.jsonl', 'replay.override.json', 'ui.expected.md', 'trajectory.expected.md',
+      sessionFixtureName(0, SESSION_FORMAT_VERSION), 'replay.override.json', 'ui.expected.md', 'trajectory.expected.md',
     ])
   })
 })

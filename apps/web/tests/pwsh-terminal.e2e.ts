@@ -17,6 +17,8 @@ import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
+import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
   fixtureUserPrompts, launchWebScaffold, seedSession, webSnapshotMode,
@@ -25,7 +27,7 @@ import {
 import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/pwsh-terminal', import.meta.url))
-const SEED = join(SNAPSHOT_DIR, 'session.v3.jsonl')
+const SEED = join(SNAPSHOT_DIR, sessionFixtureName(0, SESSION_FORMAT_VERSION))
 const TERMINAL_EXPECTED = join(SNAPSHOT_DIR, 'terminal-card.expected.md')
 const OVERLAY = fileURLToPath(new URL('./pwsh-terminal.overlay.yml', import.meta.url))
 const PROMPT = 'Run a PowerShell command that fails, then stop.'
@@ -101,6 +103,6 @@ describe.skipIf(MODE === 'record' || !HAS_PWSH)('web e2e: pwsh calls use the bas
   }, 60_000)
 
   it('guards the lane fixture inventory', async () => {
-    await assertFixtureInventory(SNAPSHOT_DIR, ['session.v3.jsonl', 'terminal-card.expected.md'])
+    await assertFixtureInventory(SNAPSHOT_DIR, [sessionFixtureName(0, SESSION_FORMAT_VERSION), 'terminal-card.expected.md'])
   })
 })

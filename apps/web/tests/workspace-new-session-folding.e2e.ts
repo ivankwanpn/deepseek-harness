@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
+import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
 import {
   assertFixtureInventory,
   captureStableAria,
@@ -20,7 +22,7 @@ import { newEnglishPage, saveFailureShot } from './support.ts'
 
 const EXPECTED_DIR = fileURLToPath(new URL('./expected/workspace-new-session-folding', import.meta.url))
 const SIDEBAR_EXPECTED = join(EXPECTED_DIR, 'sidebar.expected.md')
-const SEED = fileURLToPath(new URL('../../../snapshots/web/message-feedback-protocol/session.v3.jsonl', import.meta.url))
+const SEED = fileURLToPath(new URL(`../../../snapshots/web/message-feedback-protocol/${sessionFixtureName(0, SESSION_FORMAT_VERSION)}`, import.meta.url))
 const MODE = webSnapshotMode()
 const EXISTING_SESSION_COUNT = 6
 

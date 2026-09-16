@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url'
 import type { Browser, Locator, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
 import {
   acknowledgeReloadConnectionLoss, launchWebScaffold, seedSession, watchConsole, type WebScaffold,
 } from './scaffold.ts'
@@ -16,7 +17,7 @@ import { newEnglishPage, saveFailureShot } from './support.ts'
 
 // The seed is another scenario's committed fixture, reused read-only: this
 // spec needs any one cold Session row, not new recorded content.
-const SEED = fileURLToPath(new URL('../../../snapshots/web/seeded-history/session.v3.jsonl', import.meta.url))
+const SEED = fileURLToPath(new URL(`../../../snapshots/web/seeded-history/${sessionFixtureName(0, SESSION_FORMAT_VERSION)}`, import.meta.url))
 const SEED_ID = 'session-unarchive-web-e2e'
 
 describe('web e2e: archived sessions are restored from the Settings page', () => {
