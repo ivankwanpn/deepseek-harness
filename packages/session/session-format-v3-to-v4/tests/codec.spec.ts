@@ -6,8 +6,12 @@ const header: SessionFormatHeader = { version: 4, id: 'identity', createdAt: 1, 
 
 describe('released v4 codec', () => {
   it('accepts a v4 header and refuses a v3 header', () => {
-    expect(() => assertReleasedV4Header(header)).not.toThrow()
-    expect(() => assertReleasedV4Header({ ...header, version: 3 })).toThrow('expected format v4 header')
+    expect(() => {
+      assertReleasedV4Header(header)
+    }).not.toThrow()
+    expect(() => {
+      assertReleasedV4Header({ ...header, version: 3 })
+    }).toThrow('expected format v4 header')
   })
 
   it('round-trips a physical header at version 4', () => {

@@ -15,7 +15,9 @@ export const releasedV4SessionFormatCodec = Object.freeze({
     const decoder = releasedV3SessionFormatCodec.createDecoder(v3PhysicalHeader(value), recovery)
     return {
       header: { ...decoder.header, version: 4 },
-      decodeRow: (row, context) => decoder.decodeRow(row, context),
+      decodeRow: (row, context) => {
+        decoder.decodeRow(row, context)
+      },
       finish: context => decoder.finish(context),
     }
   },
