@@ -12257,6 +12257,9 @@ importers:
       '@deepseek-ai/dsh-session-reference':
         specifier: workspace:^
         version: link:../../packages/context/session-reference
+      '@deepseek-ai/dsh-session-stats':
+        specifier: workspace:^
+        version: link:../../packages/session/session-stats
       '@deepseek-ai/dsh-session-telemetry':
         specifier: workspace:^
         version: link:../../packages/session/session-telemetry
