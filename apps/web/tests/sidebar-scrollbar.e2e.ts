@@ -9,13 +9,15 @@ import { join } from 'node:path'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
+import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
 import {
   assertFixtureInventory, compareOrRefreshGolden, launchWebScaffold, seedSession, watchConsole,
   webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
 import { newEnglishPage, saveFailureShot } from './support.ts'
 
-const SEED = fileURLToPath(new URL('../../../snapshots/web/seeded-history/session.v3.jsonl', import.meta.url))
+const SEED = fileURLToPath(new URL(`../../../snapshots/web/seeded-history/${sessionFixtureName(0, SESSION_FORMAT_VERSION)}`, import.meta.url))
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/sidebar-scrollbar', import.meta.url))
 /** Geometry and resolved style are absent from ARIA snapshots, so this scenario records them directly. */
 const GEOMETRY_EXPECTED = join(SNAPSHOT_DIR, 'geometry.expected.md')
@@ -412,7 +414,7 @@ describe('web e2e: sidebar session list scrollbar (reserved gutter / themed thum
   }, 60_000)
 
   it('commits exactly the fixtures it reads', async () => {
-    // The scenario borrows seeded-history's session.v3.jsonl rather than committing a
+    // The scenario borrows seeded-history's current-generation session fixture rather than committing a
     // second copy, so this directory holds the golden alone.
     await assertFixtureInventory(SNAPSHOT_DIR, ['geometry.expected.md'])
   })

@@ -200,7 +200,7 @@ export function createChatScrollFixture(options: ChatScrollFixtureOptions): Chat
       turn,
     })
     session.append('step/start', { turn, step: 1 })
-    // Native V3 installs the protected system head before any user surface.
+    // The native writer installs the protected system head before any user surface.
     if (turn === 1) appendSystemPrompt(session, turn, 1)
     const user = session.append('user/message', createUserMessage({
       content: text(

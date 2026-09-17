@@ -13,8 +13,9 @@ import { join } from 'node:path'
 import type { Browser, Locator, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
@@ -24,7 +25,7 @@ import {
 } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/question-composer', import.meta.url))
-const FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
+const FIXTURE = join(SNAPSHOT_DIR, sessionFixtureName(0, SESSION_FORMAT_VERSION))
 const UI_EXPECTED = join(SNAPSHOT_DIR, 'ui.expected.md')
 const SIDEBAR_EXPECTED = join(SNAPSHOT_DIR, 'sidebar.expected.md')
 const COMPOSED_EXPECTED = join(SNAPSHOT_DIR, 'composed.expected.md')
@@ -410,7 +411,7 @@ describe.skipIf(MODE === 'record')('web e2e: cancelled question transcript', () 
 
   it('keeps the fixture inventory closed', async () => {
     await assertFixtureInventory(SNAPSHOT_DIR, [
-      'session.v3.jsonl',
+      sessionFixtureName(0, SESSION_FORMAT_VERSION),
       'ui.expected.md',
       'sidebar.expected.md',
       'composed.expected.md',

@@ -3,6 +3,9 @@ scenario: goal-multi-turn-actions
 profile: web
 composition: web-default
 recording: live
+sessionFormat:
+  version: 3
+  coverage: [adjacent-migration]
 header:
   class: web-default
 replay:

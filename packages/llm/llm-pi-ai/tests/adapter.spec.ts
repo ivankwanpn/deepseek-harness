@@ -1041,3 +1041,26 @@ describe('abort wiring', () => {
     expect(server.requests).toHaveLength(1)
   })
 })
+
+describe('route capability projection', () => {
+  it('projects images away before a hand-declared text-only model can refuse them', async () => {
+    const server = await mockServer([{ events: textEvents }])
+    // A model the catalog has never heard of and whose entry declares no
+    // modalities: the route's default is text-only, and the adapter's own gate
+    // would refuse an image. The service must project it first.
+    const ctx = await harness(server.url, { models: [{ id: 'acme-plain' }] })
+    const message = createUserMessage({
+      source: { kind: 'user' },
+      content: [
+        { type: 'image', attachment: IMAGE_REF },
+        { type: 'text', text: 'what is this' },
+      ],
+    })
+
+    await assemble(ctx, { model: 'acme-plain', messages: [message] })
+
+    const body = JSON.stringify(server.requests[0])
+    expect(body).toContain('[image omitted because this model accepts text only')
+    expect(body).not.toContain('image_url')
+  })
+})

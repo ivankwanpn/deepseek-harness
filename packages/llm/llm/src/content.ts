@@ -358,3 +358,113 @@ export function projectImagesForTextModel(messages: readonly Message[]): readonl
     return content === message.content ? message : { ...message, content }
   })
 }
+
+/** Recursively count blocks matching one predicate, walking tool-result content. */
+function countBlocks(blocks: readonly ContentBlock[], match: (block: ContentBlock) => boolean): number {
+  let count = 0
+  for (const block of blocks) {
+    if (match(block)) count += 1
+    if (block.type === 'tool-result') count += countBlocks(block.content, match)
+  }
+  return count
+}
+
+/** True when content carries assistant-only reasoning in any position. */
+function contentHasReasoning(content: readonly ContentBlock[]): boolean {
+  return content.some(block => block.type === 'reasoning'
+    || (block.type === 'tool-result' && contentHasReasoning(block.content)))
+}
+
+/** Remove reasoning blocks, recursing into tool-result content. */
+function stripReasoning(blocks: readonly ContentBlock[]): ContentBlock[] {
+  let next: ContentBlock[] | undefined
+  for (const [index, block] of blocks.entries()) {
+    if (block.type === 'reasoning') {
+      next ??= blocks.slice(0, index)
+      continue
+    }
+    if (block.type === 'tool-result') {
+      const content = stripReasoning(block.content)
+      if (content !== block.content) {
+        next ??= blocks.slice(0, index)
+        next.push({ ...block, content })
+        continue
+      }
+    }
+    next?.push(block)
+  }
+  return next ?? blocks as ContentBlock[]
+}
+
+/**
+ * Drop assistant-only reasoning a non-assistant position cannot carry.
+ * Durable notices written before the text-only settlement fix expanded the
+ * child's closing message verbatim, reasoning included. No provider accepts
+ * that vocabulary in a user or tool-result position and the writers exclude it
+ * today, so the projection removes it instead of letting one adapter refuse
+ * the whole request.
+ *
+ * Every durable non-assistant writer carries text beside any dropped block (a
+ * settlement notice always states its summary), so this cannot leave an empty
+ * message today. A future writer able to produce a reasoning-only user message
+ * must decide here what that position becomes rather than dispatching nothing.
+ * @param messages - durable history, never edited.
+ * @returns the same array when nothing carries reasoning, else shallow copies.
+ */
+export function projectReasoningFromNonAssistant(messages: readonly Message[]): readonly Message[] {
+  if (!messages.some(message => message.role !== 'assistant' && contentHasReasoning(message.content))) return messages
+  return messages.map((message) => {
+    if (message.role === 'assistant') return message
+    const content = stripReasoning(message.content)
+    return content === message.content ? message : { ...message, content }
+  })
+}
+
+/** One degradation applied while projecting a request history onto a route. */
+export interface RequestProjectionReport {
+  /** Reasoning blocks dropped from a position that cannot carry them. */
+  readonly droppedReasoning: number
+  /** Images replaced by their text description for a route that accepts none. */
+  readonly textOnlyImages: number
+  /** File references replaced by their handle text. */
+  readonly fileHandles: number
+}
+
+/** The receiving route's vocabulary, as the projection must apply it. */
+export interface RequestProjectionOptions {
+  /** Whether the receiving route accepts image input. */
+  readonly acceptsImages: boolean
+  /** Resolve one file reference's execution-world read path. */
+  readonly resolveFilePath: (ref: FileAttachmentRef) => string | undefined
+}
+
+/**
+ * Project one durable history onto the receiving route and report what the
+ * route will not see. Files never dispatch natively, images become text for a
+ * route that cannot see them, and assistant-only reasoning leaves a position
+ * that cannot carry it. Durable messages are never edited: every step returns
+ * shallow copies.
+ *
+ * The report belongs in the host log, not in the conversation: a user reading
+ * "3 images replaced by text" mid-turn cannot act on it and is likely to read
+ * it as a defect, while an operator diagnosing a route switch can.
+ * @param messages - durable history for one request.
+ * @param options - the receiving route's vocabulary.
+ * @returns the projected messages and the per-kind degradation counts.
+ */
+export function projectRequestHistory(
+  messages: readonly Message[],
+  options: RequestProjectionOptions,
+): { readonly messages: readonly Message[]; readonly report: RequestProjectionReport } {
+  const fileHandles = messages.reduce((sum, message) => sum + countBlocks(message.content, block => block.type === 'file'), 0)
+  const textOnlyImages = options.acceptsImages
+    ? 0
+    : messages.reduce((sum, message) => sum + countBlocks(message.content, block => block.type === 'image'), 0)
+  const droppedReasoning = messages.reduce(
+    (sum, message) => message.role === 'assistant' ? sum : sum + countBlocks(message.content, block => block.type === 'reasoning'), 0)
+  let projected = messages
+  if (fileHandles > 0) projected = projectFilesToText(projected, options.resolveFilePath)
+  if (textOnlyImages > 0) projected = projectImagesForTextModel(projected)
+  if (droppedReasoning > 0) projected = projectReasoningFromNonAssistant(projected)
+  return { messages: projected, report: { droppedReasoning, textOnlyImages, fileHandles } }
+}

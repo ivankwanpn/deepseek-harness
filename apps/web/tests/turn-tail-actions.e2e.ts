@@ -15,7 +15,8 @@ import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterEach, describe, expect, it, onTestFailed } from 'vitest'
 import type { ReplayOverrideDoc } from '@deepseek-ai/dsh-llm-replay'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
 import {
   acknowledgeReloadConnectionLoss, assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
@@ -23,7 +24,7 @@ import {
 import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/turn-tail-actions', import.meta.url))
-const FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
+const FIXTURE = join(SNAPSHOT_DIR, sessionFixtureName(0, SESSION_FORMAT_VERSION))
 // Three goldens for the same message: parked mid-turn, aborted, and completed.
 const RUNNING_EXPECTED = join(SNAPSHOT_DIR, 'running.expected.md')
 const SETTLED_EXPECTED = join(SNAPSHOT_DIR, 'settled.expected.md')
@@ -301,7 +302,7 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     await assertFixtureInventory(
       SNAPSHOT_DIR,
       [
-        'completed.expected.md', 'focused.expected.md', 'running.expected.md', 'session.v3.jsonl',
+        'completed.expected.md', 'focused.expected.md', 'running.expected.md', sessionFixtureName(0, SESSION_FORMAT_VERSION),
         'settled.expected.md', 'usage-expanded.expected.md',
       ],
     )

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
 import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { SessionFormatEventCollector, SessionFormatUnsupportedMigrationError } from '@deepseek-ai/dsh-session-format'
-import type { SessionFormatEvent, SessionFormatJsonObject } from '@deepseek-ai/dsh-session-format'
+import type { SessionFormatArtifact, SessionFormatEvent, SessionFormatJsonObject } from '@deepseek-ai/dsh-session-format'
 import { releasedV3SessionFormatCodec, restoreReleasedV3Artifact } from '../src/index.ts'
 
 const header = { type: 'session', version: 2, id: 'combined', createdAt: 1, isSeeded: false, delegationDepth: 0 }
@@ -14,6 +15,10 @@ const outer = { rootCallId: 'tools-code-mode:root', parentCallId: 'tools-code-mo
 const inner = { ...outer, parentCallId: outer.subCallId, subCallId: 'tools-ptc:child', name: 'read', arguments: { path: 'tools-code-mode' } }
 function event(type: string, seq: number, data: SessionFormatEvent['data'], fields = {}): SessionFormatEvent {
   return { type, seq, time: seq + 1, data, ...fields }
+}
+/** The released-v3 private view a current artifact needs: v4 adds only the version stamp to this layer. */
+function releasedV3View(artifact: SessionFormatArtifact): SessionFormatArtifact {
+  return { ...artifact, header: { ...artifact.header, version: 3 } }
 }
 const source = [
   event('turn/start', 0, { turn: 1 }),
@@ -58,17 +63,18 @@ describe('combined structural, canonical-envelope and PTC catalog migration', ()
     const reader = sessionFormatCatalog.createRestore(header, { recovery: 'strict', validation: 'current' })
     for (const row of source) reader.decodeRow(row)
     const target = reader.finish()
-    expect(target.header.version).toBe(3)
+    expect(target.header.version).toBe(SESSION_FORMAT_VERSION)
     expect(target.events).toHaveLength(source.length + 3)
     assertComposite(target.events)
-    expect(restoreReleasedV3Artifact(target, new Set())).toBe(target)
+    const v3View = releasedV3View(target)
+    expect(restoreReleasedV3Artifact(v3View, new Set())).toBe(v3View)
     expect(JSON.stringify(source)).toBe(before)
-    const native = sessionFormatCatalog.createRestore({ ...header, version: 3 }, { recovery: 'strict', validation: 'current' })
-    for (const row of target.events) native.decodeRow(releasedV3SessionFormatCodec.encodeEvent(row))
+    const native = sessionFormatCatalog.createRestore({ ...header, version: SESSION_FORMAT_VERSION }, { recovery: 'strict', validation: 'current' })
+    for (const row of target.events) native.decodeRow(sessionFormatCatalog.encodeCurrentEvent(row))
     expect(native.finish()).toEqual(target)
     const mismatched = target.events.map(row => row.type === 'tool/ptc-dispatch' && (row.data as SessionFormatJsonObject)['subCallId'] === inner.subCallId
       ? { ...row, data: { ...inner, parentCallId: 'missing', isError: false, content: [] } } : row)
-    expect(() => restoreReleasedV3Artifact({ ...target, events: mismatched }, new Set())).toThrow(/parentCallId/)
+    expect(() => restoreReleasedV3Artifact({ ...v3View, events: mismatched }, new Set())).toThrow(/parentCallId/)
   })
 
   it('composes header and scalar preset renames with every structural and canonical transformation', () => {
@@ -76,10 +82,11 @@ describe('combined structural, canonical-envelope and PTC catalog migration', ()
     const selection = event('agent-preset/selected', source.length, { agentPreset: 'code' })
     for (const row of [...source, selection]) reader.decodeRow(row)
     const target = reader.finish()
-    expect(target.header).toMatchObject({ version: 3, agentPreset: 'ptc' })
+    expect(target.header).toMatchObject({ version: SESSION_FORMAT_VERSION, agentPreset: 'ptc' })
     expect(target.events.at(-1)).toEqual({ ...selection, seq: source.length + 3, data: { agentPreset: 'ptc' } })
     assertComposite(target.events)
-    expect(restoreReleasedV3Artifact(target, new Set())).toBe(target)
+    const v3View = releasedV3View(target)
+    expect(restoreReleasedV3Artifact(v3View, new Set())).toBe(v3View)
   })
 
   it('refuses unaudited V2 preset extensions but preserves native nested preset data', () => {
@@ -150,8 +157,8 @@ describe('combined structural, canonical-envelope and PTC catalog migration', ()
     expect(target.inheritedEventCount).toBe(source.length + 4)
     expect(target.events.at(-1)).toEqual({ ...cut, seq: target.inheritedEventCount })
     assertComposite(target.events)
-    const reopened = sessionFormatCatalog.createRestore(releasedV3SessionFormatCodec.encodeHeader(target.header, target.inheritedEventCount), { recovery: 'strict', validation: 'current' })
-    for (const row of target.events) reopened.decodeRow(releasedV3SessionFormatCodec.encodeEvent(row))
+    const reopened = sessionFormatCatalog.createRestore(sessionFormatCatalog.encodeCurrentHeader(target.header, target.inheritedEventCount), { recovery: 'strict', validation: 'current' })
+    for (const row of target.events) reopened.decodeRow(sessionFormatCatalog.encodeCurrentEvent(row))
     expect(reopened.finish()).toEqual(target)
   })
 

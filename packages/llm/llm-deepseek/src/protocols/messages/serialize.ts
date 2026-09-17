@@ -56,7 +56,16 @@ export function serialize(
   const inHistory = model?.systemPromptUpdate === 'in-history'
   const input = (blocks: readonly ContentBlock[]): WireInput[] => blocks.flatMap((block): WireInput[] => {
     if (block.type === 'text') return block.text ? [{ type: 'text', text: block.text }] : []
-    if (block.type !== 'image') return unsupported(`user/tool-result content ${block.type}`)
+    if (block.type !== 'image') {
+      // Durable history may carry assistant-only blocks in a user/tool-result
+      // position: settlement notices written before the text-only fix expanded
+      // the child's closing message verbatim, reasoning included. Neither
+      // sibling renders them here (chat-completions joins text blocks only;
+      // pi-ai treats them as non-user-input vocabulary), and refusing strands
+      // the whole session on history no writer would produce today.
+      onReplayDegrade?.(`dropped ${block.type} content in a user/tool-result message`)
+      return []
+    }
     const version = images.get(block.attachment.attachmentId)
     if (version === undefined) throw new LlmError('DeepSeek Messages request image is missing', 'INVALID_REQUEST')
     const fileId = fileIds?.get(block.attachment.attachmentId)

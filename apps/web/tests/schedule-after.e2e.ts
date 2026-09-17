@@ -10,7 +10,7 @@ import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { composeEntries, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
 import { ToolCallId, createUserMessage, LlmAdapter } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
-import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import {
   ScheduleId,
   createEveryScheduleRecord,
@@ -18,6 +18,7 @@ import {
   resolveEveryOccurrence,
   type EveryScheduleRecord,
 } from '@deepseek-ai/dsh-schedule'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
 import {
   assertFixtureInventory,
   captureStableAria,
@@ -58,7 +59,7 @@ const EVERY_REPLY = 'Reminders: Check primary metrics; Check secondary metrics.'
 const EVERY_INTERVAL_SECONDS = 60 * 60
 const EVERY_FIXTURE_AGE_MS = 90 * 60 * 1_000
 const CATALOG_SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/schedule-catalog', import.meta.url))
-const CATALOG_FIXTURE = join(CATALOG_SNAPSHOT_DIR, 'session.v3.jsonl')
+const CATALOG_FIXTURE = join(CATALOG_SNAPSHOT_DIR, sessionFixtureName(0, SESSION_FORMAT_VERSION))
 const CATALOG_EXPECTED = join(CATALOG_SNAPSHOT_DIR, 'catalog.expected.md')
 const BASE_PATCH = fileURLToPath(new URL('../../../packages/bundle/base/cordis.patch.yml', import.meta.url))
 const WEB_PATCH = fileURLToPath(new URL('../../../packages/bundle/web-app/cordis.patch.yml', import.meta.url))
@@ -816,7 +817,7 @@ describe.skipIf(MODE === 'record')('web e2e: active Schedule catalog', () => {
     }).toBe(0)
     await assertFixtureInventory(CATALOG_SNAPSHOT_DIR, [
       'catalog.expected.md',
-      'session.v3.jsonl',
+      sessionFixtureName(0, SESSION_FORMAT_VERSION),
       'system-prompt.expected.md',
       'tool-schemas.expected.json',
     ])

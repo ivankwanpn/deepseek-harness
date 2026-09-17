@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { chromium, type Browser, type Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
+import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, selectedSessionFixture, watchConsole, webSnapshotMode, type WebScaffold,
@@ -11,7 +13,7 @@ import {
 import { connectFreshWorkspaceZh, saveFailureShot, ZH_BROWSER_LOCALE } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/deepseek-messages-chat', import.meta.url))
-const FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
+const FIXTURE = join(SNAPSHOT_DIR, sessionFixtureName(0, SESSION_FORMAT_VERSION))
 const MODE = webSnapshotMode()
 
 describe.skipIf(MODE === 'record')('web e2e: DeepSeek Messages conversation', () => {
@@ -70,6 +72,6 @@ describe.skipIf(MODE === 'record')('web e2e: DeepSeek Messages conversation', ()
   })
 
   it('keeps the recorded-session inventory closed', async () => {
-    await assertFixtureInventory(SNAPSHOT_DIR, ['session.v3.jsonl', 'ui.expected.md'])
+    await assertFixtureInventory(SNAPSHOT_DIR, [sessionFixtureName(0, SESSION_FORMAT_VERSION), 'ui.expected.md'])
   })
 })

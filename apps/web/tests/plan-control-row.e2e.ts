@@ -29,7 +29,8 @@ import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 // Type-only: pulls the plan/mode SessionEventMap merge so the discriminant
 // filter below types as the plan-mode event in the host aggregate.
 import type {} from '@deepseek-ai/dsh-plan-mode'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
 import {
   assertFixtureInventory, compareOrRefreshGolden,
   launchWebScaffold, watchConsole, webSnapshotMode, type WebScaffold,
@@ -37,7 +38,7 @@ import {
 import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/plan-narrow-viewport', import.meta.url))
-const FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
+const FIXTURE = join(SNAPSHOT_DIR, sessionFixtureName(0, SESSION_FORMAT_VERSION))
 const LAYOUT_EXPECTED = join(SNAPSHOT_DIR, 'layout.expected.md')
 const MODE = webSnapshotMode()
 
@@ -143,6 +144,6 @@ describe('web e2e: plan chip click area at the narrow viewport', () => {
   }, 200_000)
 
   it('keeps the snapshot inventory closed', async () => {
-    await assertFixtureInventory(SNAPSHOT_DIR, ['session.v3.jsonl', 'layout.expected.md'])
+    await assertFixtureInventory(SNAPSHOT_DIR, [sessionFixtureName(0, SESSION_FORMAT_VERSION), 'layout.expected.md'])
   })
 })

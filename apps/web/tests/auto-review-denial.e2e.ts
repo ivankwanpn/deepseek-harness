@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
+import { sessionFixtureName } from '@deepseek-ai/dsh-session-snapshot'
+import { SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
   launchWebScaffold, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
@@ -16,7 +18,7 @@ import { expandOwningTurnProcess, newEnglishPage, saveFailureShot } from './supp
 import { AUTO_REVIEW_FIXTURE, captureAutoReviewState } from './auto-review-fixture.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/auto-review-denial', import.meta.url))
-const FIXTURE = fileURLToPath(new URL('../../../snapshots/web/auto-review-denial/session.v3.jsonl', import.meta.url))
+const FIXTURE = fileURLToPath(new URL(`../../../snapshots/web/auto-review-denial/${sessionFixtureName(0, SESSION_FORMAT_VERSION)}`, import.meta.url))
 const UI_EXPECTED = fileURLToPath(new URL('../../../snapshots/web/auto-review-denial/ui.expected.md', import.meta.url))
 const MODE = webSnapshotMode()
 const SEED_ID = 'auto-review-denial-web-e2e'
@@ -136,7 +138,7 @@ describe.skipIf(MODE === 'record')('web e2e: cold Auto-review denial', () => {
 
   it('keeps its snapshot inventory closed', async () => {
     await assertFixtureInventory(SNAPSHOT_DIR, [
-      'ui.expected.md', 'session.v3.jsonl',
+      'ui.expected.md', sessionFixtureName(0, SESSION_FORMAT_VERSION),
     ])
   })
 })

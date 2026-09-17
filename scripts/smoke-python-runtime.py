@@ -137,7 +137,7 @@ ADVANCED_SNAPSHOT_DIRECTORY = (
     Path(__file__).resolve().parent / "snapshots" / "python-sdk-single-exe" / "advanced"
 )
 ADVANCED_SNAPSHOT_FILENAMES = (
-    "result.json", "session.v3.jsonl", "session.1.v3.jsonl", "session.2.v3.jsonl",
+    "result.json", "session.v4.jsonl", "session.1.v4.jsonl", "session.2.v4.jsonl",
 )
 MINIMAL_SNAPSHOT_DIRECTORY = (
     Path(__file__).resolve().parent / "snapshots" / "python-sdk-single-exe" / "minimal"
@@ -153,7 +153,7 @@ RESTART_SNAPSHOT_DIRECTORY = (
     Path(__file__).resolve().parent / "snapshots" / "python-sdk-single-exe" / "restart"
 )
 RESTART_SNAPSHOT_FILENAMES = (
-    "result.json", "requests.json", "session.1.v3.jsonl", "session.2.v3.jsonl",
+    "result.json", "requests.json", "session.1.v4.jsonl", "session.2.v4.jsonl",
 )
 MCP_SERVER_SCRIPT = """\
 import json
@@ -1735,8 +1735,8 @@ def session_header_version(content: str, label: str) -> int:
     return version
 
 
-def assert_current_session_version(version: int, label: str) -> None:
-    """Require generated logs to use the source writer generation, independent of goldens."""
+def current_session_version() -> int:
+    """Read the writer generation literal from the Session source of truth."""
     source = Path(__file__).resolve().parents[1] / "packages/core/session/src/types.ts"
     declarations = re.findall(
         r"^export const SESSION_FORMAT_VERSION = ([0-9]+)$",
@@ -1745,7 +1745,12 @@ def assert_current_session_version(version: int, label: str) -> None:
     )
     if len(declarations) != 1:
         raise AssertionError(f"{source}: expected one literal SESSION_FORMAT_VERSION declaration")
-    current_version = int(declarations[0])
+    return int(declarations[0])
+
+
+def assert_current_session_version(version: int, label: str) -> None:
+    """Require generated logs to use the source writer generation, independent of goldens."""
+    current_version = current_session_version()
     if version != current_version:
         raise AssertionError(
             f"{label}: expected current Session format v{current_version}, got v{version}",

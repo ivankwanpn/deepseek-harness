@@ -4,9 +4,12 @@ import type { AttachmentStore, ImageMediaType } from '@deepseek-ai/dsh-attachmen
 import {
   ToolCallId,
   contentHasFile,
+  createAssistantMessage,
+  createToolResultMessage,
   createUserMessage,
   fileHandleText,
   projectFilesToText,
+  projectRequestHistory,
   offloadedImageText,
   projectImagesForTextModel,
   projectOffloadedImages,
@@ -405,5 +408,57 @@ describe('file projection', () => {
     })
     // The durable message is untouched: projection returns shallow copies.
     expect(messages[1]!.content[0]!.type).toBe('file')
+  })
+})
+
+describe('request history projection', () => {
+  const reasoning = (text: string): Extract<ContentBlock, { type: 'reasoning' }> => ({ type: 'reasoning', text })
+  const fileBlock = (name: string): Extract<ContentBlock, { type: 'file' }> => ({
+    type: 'file',
+    attachment: { attachmentId: AttachmentId(`sha256:${'ab'.repeat(32)}`), name, bytes: 42 },
+  })
+
+  it('drops reasoning from a non-assistant position and reports it', () => {
+    const notice = createUserMessage({
+      content: [{ type: 'text', text: 'Background subagent finished.' }, reasoning('internal'), { type: 'text', text: 'Its closing message:' }],
+      source,
+    })
+    const { messages, report } = projectRequestHistory([notice], { acceptsImages: true, resolveFilePath: () => undefined })
+    expect(messages[0]?.content).toEqual([
+      { type: 'text', text: 'Background subagent finished.' },
+      { type: 'text', text: 'Its closing message:' },
+    ])
+    expect(report.droppedReasoning).toBe(1)
+    // The durable message keeps its reasoning: projection returns copies, never edits.
+    expect(notice.content).toHaveLength(3)
+  })
+
+  it('keeps assistant reasoning and returns the same array when nothing changes', () => {
+    const assistant = createAssistantMessage({ content: [reasoning('deliberation'), { type: 'text', text: 'answer' }], source: { provider: 'p', model: 'm' } })
+    const history = [assistant]
+    const { messages, report } = projectRequestHistory(history, { acceptsImages: true, resolveFilePath: () => undefined })
+    expect(messages).toBe(history)
+    expect(report).toEqual({ droppedReasoning: 0, textOnlyImages: 0, fileHandles: 0 })
+  })
+
+  it('drops reasoning nested inside a tool result', () => {
+    const carried = createToolResultMessage({ callId: ToolCallId('a'), isError: false, content: [reasoning('x'), { type: 'text', text: 'kept' }] })
+    const { messages, report } = projectRequestHistory([carried], { acceptsImages: true, resolveFilePath: () => undefined })
+    expect(messages[0]?.content).toEqual([
+      { type: 'tool-result', toolCallId: 'a', content: [{ type: 'text', text: 'kept' }], isError: false },
+    ])
+    expect(report.droppedReasoning).toBe(1)
+  })
+
+  it('reports images replaced for a text-only route and files converted to handle text', () => {
+    const history = [createUserMessage({ content: [image(3), { type: 'text', text: 'look' }], source })]
+    const { messages, report } = projectRequestHistory(history, { acceptsImages: false, resolveFilePath: () => undefined })
+    expect(report).toEqual({ droppedReasoning: 0, textOnlyImages: 1, fileHandles: 0 })
+    expect((messages[0]?.content[0] as ContentBlock).type).toBe('text')
+
+    const withFile = [createUserMessage({ content: [{ type: 'text', text: 'read' }, fileBlock('a.csv')], source })]
+    const projected = projectRequestHistory(withFile, { acceptsImages: true, resolveFilePath: () => '/copies/a.csv' })
+    expect(projected.report.fileHandles).toBe(1)
+    expect(projected.messages[0]?.content[1]).toEqual({ type: 'text', text: fileHandleText(fileBlock('a.csv').attachment, '/copies/a.csv') })
   })
 })
