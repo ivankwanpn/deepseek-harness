@@ -439,6 +439,10 @@ export interface RequestProjectionOptions {
  * route that cannot see them, and assistant-only reasoning leaves a position
  * that cannot carry it. Durable messages are never edited: every step returns
  * shallow copies.
+ *
+ * The report belongs in the host log, not in the conversation: a user reading
+ * "3 images replaced by text" mid-turn cannot act on it and is likely to read
+ * it as a defect, while an operator diagnosing a route switch can.
  * @param messages - durable history for one request.
  * @param options - the receiving route's vocabulary.
  * @returns the projected messages and the per-kind degradation counts.
