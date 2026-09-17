@@ -434,7 +434,7 @@ describe('request history projection', () => {
   })
 
   it('keeps assistant reasoning and returns the same array when nothing changes', () => {
-    const assistant = createAssistantMessage({ content: [reasoning('deliberation'), { type: 'text', text: 'answer' }], source: { kind: 'model', provider: 'p', model: 'm' } })
+    const assistant = createAssistantMessage({ content: [reasoning('deliberation'), { type: 'text', text: 'answer' }], source: { provider: 'p', model: 'm' } })
     const history = [assistant]
     const { messages, report } = projectRequestHistory(history, { acceptsImages: true, resolveFilePath: () => undefined })
     expect(messages).toBe(history)

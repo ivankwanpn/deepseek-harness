@@ -1052,7 +1052,7 @@ describe('route capability projection', () => {
     const message = createUserMessage({
       source: { kind: 'user' },
       content: [
-        { type: 'image', attachment: { attachmentId: AttachmentId(`sha256:${'a'.repeat(64)}`), mediaType: 'image/png' } },
+        { type: 'image', attachment: IMAGE_REF },
         { type: 'text', text: 'what is this' },
       ],
     })
