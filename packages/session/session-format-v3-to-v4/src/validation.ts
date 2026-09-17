@@ -1,8 +1,8 @@
 /** V4 header validation and target restoration: v3 rules plus the goal-limit payload contract. */
 
 import { SessionFormatError } from '@deepseek-ai/dsh-session-format'
-import type { SessionFormatArtifact, SessionFormatEvent, SessionFormatHeader } from '@deepseek-ai/dsh-session-format'
-import { assertReleasedV3Header, assertV3EventAdmission, restoreReleasedV3Artifact } from '@deepseek-ai/dsh-session-format-v2-to-v3'
+import type { SessionFormatArtifact, SessionFormatHeader } from '@deepseek-ai/dsh-session-format'
+import { assertReleasedV3Header, restoreReleasedV3Artifact } from '@deepseek-ai/dsh-session-format-v2-to-v3'
 
 /**
  * Validate v4 logical metadata with the released-v3 rules.
@@ -15,12 +15,10 @@ export function assertReleasedV4Header(header: SessionFormatHeader): void {
 
 /**
  * V4 admission adds no envelope rules beyond v3: the change is a plugin payload
- * shape, validated by the goal fold and the persistence catalog, not the format codec.
- * @param event - event envelope whose type and admission markers are available.
+ * shape, validated by the goal fold and the persistence catalog, not the format
+ * codec. The released v3 admission therefore stays the only path — a v4-named
+ * wrapper would advertise a hook nothing calls.
  */
-export function assertV4EventAdmission(event: SessionFormatEvent): void {
-  assertV3EventAdmission(event)
-}
 
 /**
  * Validate a detached v4 artifact by delegating the released v3 relationship rules.
