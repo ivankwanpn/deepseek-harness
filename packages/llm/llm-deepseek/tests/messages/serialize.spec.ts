@@ -296,8 +296,36 @@ describe('Messages images', () => {
     await expect(prepareImages([assistant([image])], connection, model, attachments, access, signal)).rejects.toMatchObject({ code: 'UNSUPPORTED_CONTENT' })
     expect(() => body([result('a', [image])])).toThrow(/image/)
     expect(() => body([assistant([image])])).toThrow(/assistant/)
-    expect(() => body([result('a', [{ type: 'reasoning', text: 'bad' }])])).toThrow(/user/)
     expect(() => serialize(options({ model }), connection, [result('a', [image])], new Map([[ref.attachmentId, version]]), access, undefined, new Map()))
       .toThrow(/request file id is missing/)
+  })
+
+  it('renders an assistant-only block in a user or tool-result position as nothing', () => {
+    // Settlement notices written before the text-only fix expanded the child's
+    // closing message verbatim, reasoning included, and that durable history
+    // must keep replaying: refusing it here strands every later turn.
+    const degraded = vi.fn()
+    const notice = createMessage({
+      role: 'user',
+      source: { kind: 'user' },
+      content: [
+        { type: 'text', text: 'Background subagent finished.' },
+        { type: 'reasoning', text: 'internal deliberation' },
+        { type: 'text', text: 'Its closing message:' },
+      ],
+    })
+    const wire = serialize(options({ messages: [notice] }), connection, [notice], new Map(), () => undefined, degraded)
+    expect(wire.messages[0]?.content).toEqual([
+      { type: 'text', text: 'Background subagent finished.' },
+      { type: 'text', text: 'Its closing message:' },
+    ])
+    expect(degraded).toHaveBeenCalledWith('dropped reasoning content in a user/tool-result message')
+
+    const carried = result('a', [{ type: 'reasoning', text: 'x' }, { type: 'text', text: 'kept' }])
+    const nested = serialize(options({ messages: [assistant([call()]), carried] }), connection, [assistant([call()]), carried],
+      new Map(), () => undefined, degraded)
+    expect(nested.messages[1]?.content).toEqual([
+      { type: 'tool_result', tool_use_id: 'a', content: [{ type: 'text', text: 'kept' }], is_error: false },
+    ])
   })
 })
