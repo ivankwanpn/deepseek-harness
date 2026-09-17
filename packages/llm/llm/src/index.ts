@@ -34,6 +34,7 @@ import { HarnessError, INVALID_CREDENTIAL_CODE } from './error.ts'
 import { normalizeLlmFailure } from './adapter-failure.ts'
 import { normalizeApiKey } from './api-key.ts'
 import { fileHandleText, projectRequestHistory } from './content.ts'
+import type { RequestProjectionReport } from './content.ts'
 import type { FileAttachmentRef } from '@deepseek-ai/dsh-attachment'
 
 export * from './attribution.ts'
@@ -1014,6 +1015,8 @@ export class LlmRuntime extends TypertRemoteService {
     prepared?: PreparedDispatch,
   ): AsyncGenerator<StreamChunk> {
     let iterator: AsyncIterator<StreamChunk>
+    // Declared outside the boundary so the projection report survives the try.
+    let report: RequestProjectionReport | undefined
     try {
       const registration = prepared?.registration ?? this.registration(options.provider)
       const adapter = registration.adapter
@@ -1051,16 +1054,7 @@ export class LlmRuntime extends TypertRemoteService {
         resolveFilePath: ref => this.fileReadPath(ref),
       })
       const projectedMessages = projection.messages
-      if (projection.report.droppedReasoning > 0
-        || projection.report.textOnlyImages > 0
-        || projection.report.fileHandles > 0) {
-        this.ctx.logger.warn(
-          `llm: projected request history for ${options.provider}/${options.model} — `
-          + `${String(projection.report.droppedReasoning)} reasoning block(s) dropped from a position that cannot carry them, `
-          + `${String(projection.report.textOnlyImages)} image(s) replaced by text for a text-only route, `
-          + `${String(projection.report.fileHandles)} file reference(s) converted to handle text`,
-        )
-      }
+      report = projection.report
       const projectedOptions = projectedMessages === resolvedOptions.messages
         ? resolvedOptions
         : Object.isFrozen(resolvedOptions)
@@ -1071,6 +1065,23 @@ export class LlmRuntime extends TypertRemoteService {
     } catch (error: unknown) {
       yield adapterFailureChunk(error, options.signal)
       return
+    }
+
+    // Reported outside the adapter boundary: a logger failure is not an
+    // adapter failure. File handles are routine (no route receives file blocks
+    // natively), so they stay at debug; images and reasoning mark a route that
+    // genuinely cannot carry what the durable history holds.
+    const route = `${options.provider}/${options.model}`
+    if (report.droppedReasoning > 0 || report.textOnlyImages > 0) {
+      this.ctx.logger.warn(
+        `llm: projected request history for ${route} — `
+        + `${String(report.droppedReasoning)} reasoning block(s) dropped from a position that cannot carry them, `
+        + `${String(report.textOnlyImages)} image(s) replaced by text for a text-only route`,
+      )
+    } else if (report.fileHandles > 0) {
+      this.ctx.logger.debug(
+        `llm: projected request history for ${route} — ${String(report.fileHandles)} file reference(s) converted to handle text`,
+      )
     }
 
     let completed = false
