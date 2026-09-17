@@ -403,6 +403,11 @@ function stripReasoning(blocks: readonly ContentBlock[]): ContentBlock[] {
  * that vocabulary in a user or tool-result position and the writers exclude it
  * today, so the projection removes it instead of letting one adapter refuse
  * the whole request.
+ *
+ * Every durable non-assistant writer carries text beside any dropped block (a
+ * settlement notice always states its summary), so this cannot leave an empty
+ * message today. A future writer able to produce a reasoning-only user message
+ * must decide here what that position becomes rather than dispatching nothing.
  * @param messages - durable history, never edited.
  * @returns the same array when nothing carries reasoning, else shallow copies.
  */
