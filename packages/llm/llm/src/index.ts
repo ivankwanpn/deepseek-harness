@@ -33,9 +33,7 @@ import type { LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.
 import { HarnessError, INVALID_CREDENTIAL_CODE } from './error.ts'
 import { normalizeLlmFailure } from './adapter-failure.ts'
 import { normalizeApiKey } from './api-key.ts'
-import {
-  contentHasFile, contentHasImage, fileHandleText, projectFilesToText, projectImagesForTextModel,
-} from './content.ts'
+import { fileHandleText, projectRequestHistory } from './content.ts'
 import type { FileAttachmentRef } from '@deepseek-ai/dsh-attachment'
 
 export * from './attribution.ts'
@@ -1043,15 +1041,25 @@ export class LlmRuntime extends TypertRemoteService {
         : Object.isFrozen(options)
           ? deepFreeze({ ...options, ...resolvedConfig })
           : { ...options, ...resolvedConfig }
-      // Files are never dispatched natively: every route receives handle text.
-      let projectedMessages: readonly Message[] = resolvedOptions.messages
-      if (projectedMessages.some(message => contentHasFile(message.content))) {
-        projectedMessages = projectFilesToText(projectedMessages, ref => this.fileReadPath(ref))
-      }
-      if (modelInfo.inputModalities !== undefined
-        && !modelInfo.inputModalities.includes('image')
-        && projectedMessages.some(message => contentHasImage(message.content))) {
-        projectedMessages = projectImagesForTextModel(projectedMessages)
+      // One projection onto the receiving route: files never dispatch natively,
+      // images become text for a route that cannot see them, and assistant-only
+      // reasoning leaves a position that cannot carry it. A route that reports
+      // no modalities is treated as accepting images — degrading a capability
+      // the adapter never disclaimed would lose content it can still send.
+      const projection = projectRequestHistory(resolvedOptions.messages, {
+        acceptsImages: modelInfo.inputModalities === undefined || modelInfo.inputModalities.includes('image'),
+        resolveFilePath: ref => this.fileReadPath(ref),
+      })
+      const projectedMessages = projection.messages
+      if (projection.report.droppedReasoning > 0
+        || projection.report.textOnlyImages > 0
+        || projection.report.fileHandles > 0) {
+        this.ctx.logger.warn(
+          `llm: projected request history for ${options.provider}/${options.model} — `
+          + `${String(projection.report.droppedReasoning)} reasoning block(s) dropped from a position that cannot carry them, `
+          + `${String(projection.report.textOnlyImages)} image(s) replaced by text for a text-only route, `
+          + `${String(projection.report.fileHandles)} file reference(s) converted to handle text`,
+        )
       }
       const projectedOptions = projectedMessages === resolvedOptions.messages
         ? resolvedOptions
